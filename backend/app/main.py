@@ -1,6 +1,6 @@
 from fastapi import Depends, FastAPI
 
-from app.api import devices, groups, health, sync
+from app.api import approval, devices, groups, health, sync
 from app.security import require_internal
 
 
@@ -10,6 +10,7 @@ def create_app() -> FastAPI:
     protected = [Depends(require_internal)]
     app.include_router(groups.router, dependencies=protected)
     app.include_router(devices.router, dependencies=protected)
+    app.include_router(approval.router, dependencies=protected)
     app.include_router(sync.router, dependencies=protected)
     return app
 
