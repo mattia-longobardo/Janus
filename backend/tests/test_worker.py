@@ -46,3 +46,22 @@ def test_reconcile_records_single_outage(db):
     assert _count(db, "infra.up") == 1
     reconcile_once(lambda: nullcontext(db), lambda: FakePihole(), lease="24h", apply=True)
     assert _count(db, "infra.up") == 1
+
+
+def test_reconcile_line_rejection_is_not_an_outage(db):
+    _seed(db)
+    fake = FakePihole(reject={"00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"})
+    diff = reconcile_once(lambda: nullcontext(db), lambda: fake, lease="24h", apply=True)
+    assert diff is not None and len(diff.failed) == 1
+    assert _count(db, "infra.down") == 0
+    assert _count(db, "sync.failed") == 1
+
+
+def test_reconcile_keeps_partial_log_when_pihole_drops(db):
+    _seed(db)
+    stale = "00:00:5e:00:53:99,192.168.1.12,old,24h"
+    fake = FakePihole([stale], drop_after_writes=1)
+    assert reconcile_once(lambda: nullcontext(db), lambda: fake, lease="24h", apply=True) is None
+    assert _count(db, "infra.down") == 1
+    applied = db.scalar(select(Event).where(Event.type == "sync.applied"))
+    assert applied.payload["removed"] == [stale]

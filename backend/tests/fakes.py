@@ -4,10 +4,20 @@ from app.pihole.client import PiholeError
 
 
 class FakePihole:
-    def __init__(self, hosts: list[str] | None = None, *, fail: bool = False) -> None:
+    def __init__(self, hosts: list[str] | None = None, *, fail: bool = False,
+                 reject: set[str] | None = None, drop_after_writes: int | None = None) -> None:
         self.hosts = list(hosts or [])
         self.fail = fail
+        self.reject = reject or set()
+        self.drop_after_writes = drop_after_writes
         self.writes: list[tuple[str, str]] = []
+
+    def _write(self, kind: str, line: str) -> None:
+        if self.drop_after_writes is not None and len(self.writes) >= self.drop_after_writes:
+            raise PiholeError("Pi-hole unreachable: connection reset")
+        if line in self.reject:
+            raise PiholeError(f"PUT {line} failed: HTTP 400 invalid", status=400)
+        self.writes.append((kind, line))
 
     def __enter__(self) -> Self:
         if self.fail:
@@ -23,11 +33,11 @@ class FakePihole:
         return list(self.hosts)
 
     def add_host(self, line: str) -> None:
-        self.writes.append(("add", line))
+        self._write("add", line)
         self.hosts.append(line)
 
     def remove_host(self, line: str) -> None:
-        self.writes.append(("remove", line))
+        self._write("remove", line)
         self.hosts.remove(line)
 
     def close(self) -> None:

@@ -126,7 +126,7 @@ def import_csv(db: Session, text: str, plan: NetworkPlan) -> ImportReport:
                 hostname=hostname_for(name, hostnames),
                 group=group,
                 static_ip=str(ip),
-                access=Access.authorized,
+                access=group.default_access,
                 private_mac=bool(mac) and is_private_mac(mac),
             )
             db.add(device)
@@ -135,7 +135,11 @@ def import_csv(db: Session, text: str, plan: NetworkPlan) -> ImportReport:
         else:
             if own_ip is not None:
                 taken.discard(own_ip)
-            device.name = name
+            if device.name != name:
+                hostnames.discard(device.hostname)
+                device.name = name
+                device.hostname = hostname_for(name, hostnames)
+                hostnames.add(device.hostname)
             device.group = group
             device.static_ip = str(ip)
             report.devices_updated += 1

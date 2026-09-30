@@ -1,6 +1,8 @@
+import pytest
 from sqlalchemy import select
 
 from app.models import Access, Device, Event, Group
+from app.pihole.client import PiholeError
 from app.pihole.reservations import HostLine, desired_hosts, diff_hosts
 from app.pihole.sync import apply_sync, plan_sync
 from tests.fakes import FakePihole
@@ -92,3 +94,29 @@ def test_apply_sync_removes_before_adding_and_logs(db):
     event = db.scalar(select(Event).where(Event.type == "sync.applied"))
     assert event.payload["added"] == ["00:00:5e:00:53:10,192.168.1.13,laptop-a,24h"]
     assert apply_sync(db, fake, "24h").empty
+
+
+def test_apply_sync_skips_rejected_line_and_continues(db):
+    g = _group(db)
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.10")
+    _device(db, g, "PHONE_A", "00:00:5E:00:53:11", "192.168.1.11")
+    bad = "00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"
+    fake = FakePihole(reject={bad})
+    diff = apply_sync(db, fake, "24h")
+    assert fake.hosts == ["00:00:5e:00:53:11,192.168.1.11,phone-a,24h"]
+    assert len(diff.failed) == 1 and diff.failed[0].startswith(bad)
+    failed = db.scalar(select(Event).where(Event.type == "sync.failed"))
+    assert failed.payload["failed"] == diff.failed
+    applied = db.scalar(select(Event).where(Event.type == "sync.applied"))
+    assert applied.payload == {"added": ["00:00:5e:00:53:11,192.168.1.11,phone-a,24h"], "removed": []}
+
+
+def test_apply_sync_logs_partial_progress_before_transport_error(db):
+    g = _group(db)
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.13")
+    stale = "00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"
+    fake = FakePihole([stale], drop_after_writes=1)
+    with pytest.raises(PiholeError):
+        apply_sync(db, fake, "24h")
+    applied = db.scalar(select(Event).where(Event.type == "sync.applied"))
+    assert applied.payload == {"added": [], "removed": [stale]}

@@ -3,7 +3,7 @@ from datetime import datetime
 from ipaddress import IPv4Address
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,12 @@ class DevicePatch(BaseModel):
     group_id: int | None = None
     static_ip: str | None = None
     access: Access | None = None
+
+    @model_validator(mode="after")
+    def _no_null_name(self) -> "DevicePatch":
+        if "name" in self.model_fields_set and self.name is None:
+            raise ValueError("name cannot be null")
+        return self
 
 
 def _get(db: Session, device_id: uuid.UUID) -> Device:

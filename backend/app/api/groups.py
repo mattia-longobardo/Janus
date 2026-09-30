@@ -1,7 +1,7 @@
 from ipaddress import IPv4Address
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.net.ipplan import AssignmentError, IpRange, NetworkPlan, check_group_ra
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 GROUP_ACCESS = {Access.authorized, Access.lan_only}
+REQUIRED_GROUP_FIELDS = ("name", "color", "icon", "range_start", "range_end", "default_access")
 
 
 def plan() -> NetworkPlan:
@@ -50,6 +51,13 @@ class GroupPatch(BaseModel):
         if value is not None and value not in GROUP_ACCESS:
             raise ValueError("default_access must be authorized or lan_only")
         return value
+
+    @model_validator(mode="after")
+    def _no_null_required(self) -> "GroupPatch":
+        for name in REQUIRED_GROUP_FIELDS:
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        return self
 
 
 class GroupOut(BaseModel):

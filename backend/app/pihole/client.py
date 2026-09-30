@@ -5,7 +5,13 @@ import httpx
 
 
 class PiholeError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
+
+    @property
+    def rejected(self) -> bool:
+        return self.status is not None and 400 <= self.status < 500
 
 
 class PiholeClient:
@@ -47,7 +53,9 @@ class PiholeClient:
             self._login()
             response = self._send(method, path, **kwargs)
         if response.status_code >= 400:
-            raise PiholeError(f"{method} {path} failed: HTTP {response.status_code} {response.text[:200]}")
+            raise PiholeError(
+                f"{method} {path} failed: HTTP {response.status_code} {response.text[:200]}", status=response.status_code
+            )
         return response
 
     def list_hosts(self) -> list[str]:

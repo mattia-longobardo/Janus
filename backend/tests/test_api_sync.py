@@ -19,7 +19,7 @@ def test_plan_shows_diff_without_writing(client, db):
     client.app.dependency_overrides[get_pihole] = lambda: fake
     body = client.get("/api/sync/plan").json()
     assert body == {"to_add": ["00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"], "to_remove": [],
-                    "unmanaged": ["garbage line"]}
+                    "unmanaged": ["garbage line"], "failed": []}
     assert fake.writes == []
 
 

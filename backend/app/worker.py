@@ -46,7 +46,6 @@ def reconcile_once(
                 diff = apply_sync(db, client, lease) if apply else plan_sync(db, client, lease)
         except PiholeError as exc:
             log.warning("reconcile failed: %s", exc)
-            db.rollback()
             _mark_down(db, str(exc))
             db.commit()
             return None
