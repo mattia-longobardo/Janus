@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from app.notify.policy import channels_for, in_quiet_hours, parse_hhmm
+from app.notify.policy import channels_for, in_quiet_hours, parse_hhmm, suppressed_by_schedule
 from app.notify.store import NotifySettings, default_rule_rows
 
 ROME = ZoneInfo("Europe/Rome")
@@ -57,3 +57,11 @@ def test_test_event_targets_one_ready_channel_even_when_disabled():
     ns = NotifySettings(enabled=False)
     assert _channels("notify.test", ns=ns, payload={"channel": "email"}) == ["email"]
     assert _channels("notify.test", payload={"channel": "email"}, ready={"gotify"}) == []
+
+
+def test_suppressed_by_schedule():
+    ns = NotifySettings()
+    assert suppressed_by_schedule("device.offline", ns, NIGHT, False)
+    assert suppressed_by_schedule("infra.down", ns, NOON, True)
+    assert not suppressed_by_schedule("device.new", ns, NIGHT, True)
+    assert not suppressed_by_schedule("ip.conflict", ns, NOON, True)

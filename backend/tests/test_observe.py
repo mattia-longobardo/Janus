@@ -60,3 +60,7 @@ def test_garbage_hostname_is_decoded_safely():
 )
 def test_ignored_packets(packet):
     assert observe(packet) is None
+
+
+def test_dhcp_requested_zero_address_is_ignored():
+    assert observe(dhcp("request", requested_addr="0.0.0.0")).ip is None

@@ -67,7 +67,8 @@ def from_dhcp(packet: Any) -> Observation | None:
     except ValueError:
         return None
     ciaddr = packet[BOOTP].ciaddr
-    ip = options.get("requested_addr") or (ciaddr if ciaddr and ciaddr != NO_IP else None)
+    requested = options.get("requested_addr")
+    ip = requested if requested and requested != NO_IP else (ciaddr if ciaddr and ciaddr != NO_IP else None)
     params = options.get("param_req_list") or []
     if isinstance(params, int):
         params = [params]

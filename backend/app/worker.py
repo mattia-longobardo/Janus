@@ -2,39 +2,49 @@ import logging
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from redis import Redis
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import SessionLocal
 from app.events import record_event
+from app.general import current_tz
+from app.maintenance import Window, active_windows, load_windows
 from app.models import Setting
+from app.notify.channels import EmailChannel, GotifyChannel
+from app.notify.debounce import Debouncer, RedisDebouncer
+from app.notify.dispatcher import Sender, dispatch_pending
 from app.pihole.client import PiholeClient, PiholeError
 from app.pihole.reservations import HostDiff
 from app.pihole.sync import apply_sync, plan_sync
+from app.presence import evaluate_presence, purge_sightings
 
 log = logging.getLogger("janus.worker")
-DOWN_KEY = "pihole.down_since"
+SessionFactory = Callable[[], AbstractContextManager[Session]]
+SENTINEL_HEARTBEAT_KEY = "sentinel.heartbeat"
+MAINTENANCE_KEY = "maintenance.active"
 
 
-def _mark_down(db: Session, error: str) -> None:
-    state = db.get(Setting, DOWN_KEY)
+def _mark_down(db: Session, service: str, error: str) -> None:
+    key = f"{service}.down_since"
+    state = db.get(Setting, key)
     if state is None or state.value is None:
-        db.merge(Setting(key=DOWN_KEY, value=datetime.now(UTC).isoformat()))
-        record_event(db, "infra.down", None, {"service": "pihole", "error": error})
+        db.merge(Setting(key=key, value=datetime.now(UTC).isoformat()))
+        record_event(db, "infra.down", None, {"service": service, "error": error})
 
 
-def _mark_up(db: Session) -> None:
-    state = db.get(Setting, DOWN_KEY)
+def _mark_up(db: Session, service: str) -> None:
+    state = db.get(Setting, f"{service}.down_since")
     if state is not None and state.value is not None:
-        record_event(db, "infra.up", None, {"service": "pihole", "down_since": state.value})
+        record_event(db, "infra.up", None, {"service": service, "down_since": state.value})
         state.value = None
 
 
 def reconcile_once(
-    session_factory: Callable[[], AbstractContextManager[Session]],
+    session_factory: SessionFactory,
     client_factory: Callable[[], AbstractContextManager],
     *,
     lease: str,
@@ -46,30 +56,93 @@ def reconcile_once(
                 diff = apply_sync(db, client, lease) if apply else plan_sync(db, client, lease)
         except PiholeError as exc:
             log.warning("reconcile failed: %s", exc)
-            _mark_down(db, str(exc))
+            _mark_down(db, "pihole", str(exc))
             db.commit()
             return None
-        _mark_up(db)
+        _mark_up(db, "pihole")
         db.commit()
         if not diff.empty:
             log.info("reconcile %s: %s", "applied" if apply else "dry-run", diff.as_dict())
         return diff
 
 
+def check_sentinel(db: Session, now: datetime, max_age: timedelta) -> bool:
+    row = db.get(Setting, SENTINEL_HEARTBEAT_KEY)
+    if row is None or not row.value:
+        return False
+    age = now - datetime.fromisoformat(row.value)
+    if age > max_age:
+        _mark_down(db, "sentinel", f"no scanner heartbeat for {int(age.total_seconds())} s")
+        return False
+    _mark_up(db, "sentinel")
+    return True
+
+
+def track_maintenance(db: Session, now: datetime, windows: list[Window], tz) -> None:
+    active = bool(active_windows(windows, now, tz))
+    row = db.get(Setting, MAINTENANCE_KEY)
+    previous = bool(row.value) if row is not None else False
+    if active != previous:
+        record_event(db, "maintenance.start" if active else "maintenance.end", None, {}, ts=now)
+        db.merge(Setting(key=MAINTENANCE_KEY, value=active))
+
+
+def presence_once(session_factory: SessionFactory, now: datetime | None = None) -> None:
+    with session_factory() as db:
+        now = now or datetime.now(UTC)
+        windows, tz = load_windows(db), current_tz(db)
+        track_maintenance(db, now, windows, tz)
+        if check_sentinel(db, now, timedelta(seconds=3 * settings.sweep_interval_s)):
+            evaluate_presence(db, now=now, timeout=timedelta(seconds=settings.presence_timeout_s), windows=windows, tz=tz)
+        purge_sightings(db, now - timedelta(days=settings.sighting_retention_days))
+        db.commit()
+
+
+def dispatch_once(
+    session_factory: SessionFactory, senders: dict[str, Sender], debouncer: Debouncer, now: datetime | None = None
+) -> int:
+    with session_factory() as db:
+        count = dispatch_pending(
+            db, senders, debouncer, now=now or datetime.now(UTC), tz=current_tz(db), windows=load_windows(db),
+            base_url=settings.base_url, quarantine_active=settings.sync_mode == "apply",
+        )
+        db.commit()
+        return count
+
+
+def build_senders() -> dict[str, Sender]:
+    return {
+        "email": EmailChannel(settings.smtp_host, settings.smtp_port, settings.smtp_user, settings.smtp_password,
+                              settings.smtp_sender),
+        "gotify": GotifyChannel(settings.gotify_url, settings.gotify_token),
+    }
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     heartbeat = Path(settings.heartbeat_path)
     apply = settings.sync_mode == "apply"
-    log.info("worker started (mode=%s, interval=%ss)", settings.sync_mode, settings.reconcile_interval_s)
+    senders = build_senders()
+    debouncer = RedisDebouncer(Redis.from_url(settings.redis_url))
+    jobs: list[tuple[str, int, Callable[[], object]]] = [
+        ("reconcile", settings.reconcile_interval_s, lambda: reconcile_once(
+            SessionLocal, lambda: PiholeClient(settings.pihole_url, settings.pihole_password),
+            lease=settings.reservation_lease, apply=apply)),
+        ("presence", settings.presence_interval_s, lambda: presence_once(SessionLocal)),
+        ("dispatch", settings.dispatch_interval_s, lambda: dispatch_once(SessionLocal, senders, debouncer)),
+    ]
+    due = {name: 0.0 for name, _, _ in jobs}
+    log.info("worker started (mode=%s)", settings.sync_mode)
     while True:
-        reconcile_once(
-            SessionLocal,
-            lambda: PiholeClient(settings.pihole_url, settings.pihole_password),
-            lease=settings.reservation_lease,
-            apply=apply,
-        )
+        for name, interval, job in jobs:
+            if time.monotonic() >= due[name]:
+                try:
+                    job()
+                except Exception:
+                    log.exception("job %s failed", name)
+                due[name] = time.monotonic() + interval
         heartbeat.touch()
-        time.sleep(settings.reconcile_interval_s)
+        time.sleep(5)
 
 
 if __name__ == "__main__":
