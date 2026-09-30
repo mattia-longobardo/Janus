@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.net.ipplan import IpRange
 
 
 class Access(enum.StrEnum):
@@ -33,6 +34,9 @@ class Group(Base):
     offline_alert_hours: Mapped[int | None] = mapped_column(Integer)
 
     devices: Mapped[list["Device"]] = relationship(back_populates="group")
+
+    def ip_range(self) -> IpRange:
+        return IpRange.parse(self.range_start, self.range_end)
 
 
 class Device(Base):
