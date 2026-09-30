@@ -1,0 +1,10 @@
+.env
+*.csv
+!backend/tests/fixtures/*.csv
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+node_modules/
+.next/
