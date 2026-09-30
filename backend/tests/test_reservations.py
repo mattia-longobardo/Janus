@@ -1,0 +1,94 @@
+from sqlalchemy import select
+
+from app.models import Access, Device, Event, Group
+from app.pihole.reservations import HostLine, desired_hosts, diff_hosts
+from app.pihole.sync import apply_sync, plan_sync
+from tests.fakes import FakePihole
+
+
+def _group(db, name="People", start="192.168.1.10", end="192.168.1.19"):
+    g = Group(name=name, color="#6FB7FF", icon="device", range_start=start, range_end=end,
+              default_access=Access.authorized)
+    db.add(g)
+    db.flush()
+    return g
+
+
+def _device(db, group, name, mac, ip, access=Access.authorized):
+    d = Device(mac=mac, name=name, hostname=name.lower().replace("_", "-"), group=group, static_ip=ip, access=access)
+    db.add(d)
+    db.flush()
+    return d
+
+
+def test_render_and_parse_round_trip():
+    plain = HostLine("00:00:5E:00:53:10", "192.168.1.10", "laptop-a")
+    lan = HostLine("00:00:5E:00:53:20", "192.168.1.120", "plug", lan_only=True)
+    assert plain.render() == "00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"
+    assert lan.render() == "00:00:5e:00:53:20,set:lanonly,192.168.1.120,plug,24h"
+    assert HostLine.parse(plain.render()) == plain
+    assert HostLine.parse(lan.render()) == lan
+    assert HostLine.parse("00-00-5E-00-53-10, 192.168.1.10, laptop-a, 24h") == plain
+    assert HostLine.parse("not,a,reservation") is None
+
+
+def test_desired_hosts_only_include_approved_devices_with_mac_and_ip(db):
+    g = _group(db)
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.10")
+    _device(db, g, "PLUG", "00:00:5E:00:53:20", "192.168.1.11", Access.lan_only)
+    _device(db, g, "PENDING", "00:00:5E:00:53:21", "192.168.1.12", Access.pending)
+    _device(db, g, "BLOCKED", "00:00:5E:00:53:22", "192.168.1.13", Access.blocked)
+    _device(db, g, "NO_MAC", None, "192.168.1.14")
+    _device(db, g, "NO_IP", "00:00:5E:00:53:23", None)
+    assert desired_hosts(db, "24h") == {
+        HostLine("00:00:5E:00:53:10", "192.168.1.10", "laptop-a"),
+        HostLine("00:00:5E:00:53:20", "192.168.1.11", "plug", lan_only=True),
+    }
+
+
+def test_diff_adds_missing_and_removes_stale():
+    keep = HostLine("00:00:5E:00:53:10", "192.168.1.10", "laptop-a")
+    new = HostLine("00:00:5E:00:53:11", "192.168.1.11", "phone-a")
+    stale = "00:00:5e:00:53:12,192.168.1.12,old,24h"
+    diff = diff_hosts({keep, new}, [keep.render(), stale])
+    assert diff.to_add == [new]
+    assert diff.to_remove == [stale]
+    assert not diff.empty
+
+
+def test_diff_detects_ip_change_as_remove_plus_add():
+    before = "00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"
+    after = HostLine("00:00:5E:00:53:10", "192.168.1.13", "laptop-a")
+    diff = diff_hosts({after}, [before])
+    assert diff.to_add == [after] and diff.to_remove == [before]
+
+
+def test_diff_keeps_unmanaged_lines():
+    garbage = "this is not a reservation"
+    diff = diff_hosts(set(), [garbage])
+    assert diff.unmanaged == [garbage]
+    assert diff.to_remove == []
+    assert diff.empty
+
+
+def test_plan_sync_never_writes(db):
+    g = _group(db)
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.10")
+    fake = FakePihole()
+    diff = plan_sync(db, fake, "24h")
+    assert [h.render() for h in diff.to_add] == ["00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"]
+    assert fake.writes == []
+
+
+def test_apply_sync_removes_before_adding_and_logs(db):
+    g = _group(db)
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.13")
+    fake = FakePihole(["00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"])
+    apply_sync(db, fake, "24h")
+    assert fake.writes == [
+        ("remove", "00:00:5e:00:53:10,192.168.1.10,laptop-a,24h"),
+        ("add", "00:00:5e:00:53:10,192.168.1.13,laptop-a,24h"),
+    ]
+    event = db.scalar(select(Event).where(Event.type == "sync.applied"))
+    assert event.payload["added"] == ["00:00:5e:00:53:10,192.168.1.13,laptop-a,24h"]
+    assert apply_sync(db, fake, "24h").empty
