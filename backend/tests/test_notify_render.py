@@ -1,0 +1,43 @@
+from zoneinfo import ZoneInfo
+
+from app.models import Event
+from app.notify.render import render
+
+ROME = ZoneInfo("Europe/Rome")
+BASE = "https://janus.example"
+
+
+def _render(kind, payload, mac="00:00:5E:00:53:40", name=None, quarantine=False):
+    return render(Event(type=kind, mac=mac, payload=payload), name, base_url=BASE, tz=ROME, quarantine_active=quarantine)
+
+
+def test_new_device_message_depends_on_quarantine():
+    payload = {"device_id": "abc", "ip": "192.168.1.243", "private_mac": True}
+    detected = _render("device.new", payload, name="pixel-7")
+    assert detected.title == "New device: pixel-7"
+    assert detected.body == "MAC 00:00:5E:00:53:40 · IP 192.168.1.243 · private MAC\nDetected on the network; quarantine is not active yet."
+    assert (detected.priority, detected.url) == (8, f"{BASE}/devices/abc")
+    assert _render("device.new", payload, name="pixel-7", quarantine=True).body.endswith("No internet access until you approve it.")
+
+
+def test_offline_message_uses_local_time():
+    message = _render("device.offline", {"device_id": "abc", "name": "PLUG", "hours": 6,
+                                          "last_seen": "2026-10-01T03:00:00+00:00"}, name="PLUG")
+    assert (message.title, message.body) == ("Offline: PLUG", "Not seen for more than 6 h (last seen 01/10 05:00)")
+
+
+def test_infra_messages_name_the_service():
+    down = _render("infra.down", {"service": "pihole", "error": "Pi-hole unreachable: refused"}, mac=None)
+    assert (down.title, down.body, down.url) == ("Pi-hole unreachable", "Pi-hole unreachable: refused", BASE)
+    up = _render("infra.up", {"service": "sentinel", "down_since": "2026-10-01T03:00:00+00:00"}, mac=None)
+    assert (up.title, up.body) == ("Scanner reachable again", "Down since 01/10 05:00")
+
+
+def test_conflict_mismatch_private_and_test():
+    assert _render("ip.conflict", {"ip": "192.168.1.10", "macs": ["A", "B"]}).body == "Claimed by A, B"
+    mismatch = _render("device.ip_mismatch", {"device_id": "d", "ip": "192.168.1.17", "expected": "192.168.1.10"}, name="LAPTOP")
+    assert (mismatch.title, mismatch.body) == ("LAPTOP is using 192.168.1.17", "Its reserved address is 192.168.1.10")
+    private = _render("device.private_mac", {"device_id": "d", "previous_name": "LAPTOP", "previous_mac": "M"}, name="new")
+    assert private.title == "new changed its MAC"
+    assert _render("notify.test", {"channel": "email"}, mac=None).title == "Janus test notification"
+    assert _render("device.approved", {"device_id": "d", "ip": "192.168.1.10", "access": "lan_only"}, name="P").body == "192.168.1.10 · LAN only"
