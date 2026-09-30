@@ -17,3 +17,4 @@ Needs a reachable Postgres database `janus_test` (see `.env.example`).
     docker compose up -d --build
 
 The worker starts in `JANUS_SYNC_MODE=dry-run`: it logs the reservation diff and never writes to Pi-hole.
+`janus-sentinel` runs on the host network to see ARP and DHCP traffic (see the AGENTS.md exception); it stays user 1000 through a `cap_net_raw` file capability.

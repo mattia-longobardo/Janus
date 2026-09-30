@@ -108,3 +108,20 @@ def test_ip_mismatch_for_approved_device(db, known):
     _record(db, KNOWN, "192.168.1.17", at=NOW + timedelta(minutes=10))
     _record(db, KNOWN, "192.168.1.245", at=NOW + timedelta(minutes=20))
     assert len(_events(db, "device.ip_mismatch")) == 1
+
+
+def test_second_mac_claiming_the_gateway_is_pending(db):
+    _record(db, "00:00:5E:00:53:01", "192.168.1.1")
+    spoof = _record(db, "00:00:5E:00:53:66", "192.168.1.1", at=NOW + timedelta(minutes=5))
+    assert spoof.access is Access.pending
+    assert [e.mac for e in _events(db, "device.new")] == ["00:00:5E:00:53:66"]
+
+
+def test_ip_mismatch_repeats_only_daily_for_the_same_address(db, known):
+    _record(db, KNOWN, "192.168.1.17")
+    _record(db, KNOWN, "192.168.1.17", at=NOW + timedelta(hours=2))
+    assert len(_events(db, "device.ip_mismatch")) == 1
+    _record(db, KNOWN, "192.168.1.18", at=NOW + timedelta(hours=3))
+    assert len(_events(db, "device.ip_mismatch")) == 2
+    _record(db, KNOWN, "192.168.1.18", at=NOW + timedelta(hours=28))
+    assert len(_events(db, "device.ip_mismatch")) == 3

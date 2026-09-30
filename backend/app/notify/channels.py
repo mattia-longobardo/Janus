@@ -10,7 +10,9 @@ from app.notify.store import NotifySettings
 
 
 class NotifyError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, permanent: bool = False) -> None:
+        super().__init__(message)
+        self.permanent = permanent
 
 
 class GotifyChannel:
@@ -31,7 +33,10 @@ class GotifyChannel:
         except httpx.HTTPError as exc:
             raise NotifyError(f"Gotify unreachable: {exc}") from exc
         if response.status_code >= 400:
-            raise NotifyError(f"Gotify rejected the message: HTTP {response.status_code}")
+            raise NotifyError(
+                f"Gotify rejected the message: HTTP {response.status_code}",
+                permanent=400 <= response.status_code < 500 and response.status_code not in (408, 429),
+            )
 
 
 class EmailChannel:
@@ -62,5 +67,7 @@ class EmailChannel:
                 if self.user:
                     smtp.login(self.user, self.password)
                 smtp.send_message(mail)
+        except (smtplib.SMTPAuthenticationError, smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused) as exc:
+            raise NotifyError(f"email rejected: {exc}", permanent=True) from exc
         except (OSError, smtplib.SMTPException) as exc:
             raise NotifyError(f"email failed: {exc}") from exc

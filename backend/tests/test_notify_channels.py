@@ -29,10 +29,12 @@ def test_gotify_posts_message_with_click_url():
 def test_gotify_errors_become_notify_errors():
     respx.post("https://gotify.example/message").mock(side_effect=[httpx.Response(401), httpx.ConnectError("down")])
     channel = GotifyChannel("https://gotify.example", "tok")
-    with pytest.raises(NotifyError, match="HTTP 401"):
+    with pytest.raises(NotifyError, match="HTTP 401") as rejected:
         channel.send(MESSAGE, NS)
-    with pytest.raises(NotifyError, match="unreachable"):
+    assert rejected.value.permanent is True
+    with pytest.raises(NotifyError, match="unreachable") as down:
         channel.send(MESSAGE, NS)
+    assert down.value.permanent is False
 
 
 def test_gotify_ready_needs_url_and_token():
@@ -76,8 +78,9 @@ def test_email_failure_and_readiness():
         raise OSError("connection refused")
 
     channel = EmailChannel("mx.example", 465, "u", "p", "no-reply@example.org", smtp_factory=broken)
-    with pytest.raises(NotifyError, match="connection refused"):
+    with pytest.raises(NotifyError, match="connection refused") as down:
         channel.send(MESSAGE, NS)
+    assert down.value.permanent is False
     assert channel.ready(NS)
     assert not channel.ready(NotifySettings(email_recipient=""))
 
@@ -105,3 +108,16 @@ def test_redis_debouncer_uses_set_nx_ex():
     assert debouncer.first("device.new:M", 3600) is True
     assert debouncer.first("device.new:M", 3600) is False
     assert redis.calls[0] == ("janus:notify:device.new:M", True, 3600)
+
+
+def test_email_auth_failure_is_permanent():
+    import smtplib
+
+    class Refusing(FakeSMTP):
+        def login(self, user, password):
+            raise smtplib.SMTPAuthenticationError(535, b"bad credentials")
+
+    channel = EmailChannel("mx.example", 465, "u", "p", "no-reply@example.org", smtp_factory=Refusing)
+    with pytest.raises(NotifyError) as refused:
+        channel.send(MESSAGE, NS)
+    assert refused.value.permanent is True

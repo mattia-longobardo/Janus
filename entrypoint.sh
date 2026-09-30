@@ -8,6 +8,9 @@ case "${1:-api}" in
   worker)
     exec python -m app.worker
     ;;
+  sentinel)
+    exec /usr/local/bin/janus-sniff -m app.sentinel.main
+    ;;
   *)
     exec "$@"
     ;;

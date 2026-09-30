@@ -5,15 +5,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.events import record_event
-from app.models import Access, Device, Event, Sighting
+from app.models import Access, Device, Event, Setting, Sighting
 from app.net.ipplan import NetworkPlan
 from app.net.mac import is_private_mac
 from app.net.names import hostname_for
 from app.sentinel.observe import Observation
 
+GATEWAY_KEY = "gateway.mac"
 SIGHTING_GAP = timedelta(minutes=10)
 CONFLICT_WINDOW = timedelta(minutes=2)
 REPEAT_GAP = timedelta(hours=1)
+MISMATCH_GAP = timedelta(hours=24)
 APPROVED = (Access.authorized, Access.lan_only)
 
 
@@ -36,7 +38,8 @@ def _recent(db: Session, kind: str, since: datetime, *, mac: str | None = None, 
 def _new_device(db: Session, obs: Observation, plan: NetworkPlan, now: datetime) -> Device:
     taken = set(db.scalars(select(Device.hostname)))
     private = is_private_mac(obs.mac)
-    if _address(obs.ip) == plan.gateway:
+    if _address(obs.ip) == plan.gateway and db.get(Setting, GATEWAY_KEY) is None:
+        db.add(Setting(key=GATEWAY_KEY, value=obs.mac))
         device = Device(mac=obs.mac, name="Gateway", hostname=hostname_for("gateway", taken), access=Access.authorized,
                         private_mac=private, first_seen=now)
         db.add(device)
@@ -80,7 +83,7 @@ def _check_mismatch(db: Session, device: Device, ip: str, plan: NetworkPlan, now
         or ip == device.static_ip
         or address is None
         or address in plan.quarantine
-        or _recent(db, "device.ip_mismatch", now - REPEAT_GAP, mac=device.mac)
+        or _recent(db, "device.ip_mismatch", now - MISMATCH_GAP, mac=device.mac, ip=ip)
     ):
         return
     record_event(db, "device.ip_mismatch", device.mac, {

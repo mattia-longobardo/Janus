@@ -20,6 +20,15 @@ def in_quiet_hours(moment: time, start: time | None, end: time | None) -> bool:
     return moment >= start or moment < end
 
 
+def suppressed_by_schedule(event_type: str, ns: NotifySettings, local_dt: datetime, alerts_muted: bool) -> bool:
+    spec = CATALOG.get(event_type)
+    if spec is None or spec.always:
+        return False
+    if alerts_muted and spec.maintenance_muted:
+        return True
+    return in_quiet_hours(local_dt.time(), parse_hhmm(ns.quiet_start), parse_hhmm(ns.quiet_end))
+
+
 def channels_for(
     event_type: str,
     payload: dict[str, Any],
@@ -37,9 +46,6 @@ def channels_for(
         return [wanted] if wanted in ready else []
     if not ns.enabled:
         return []
-    if not spec.always:
-        if alerts_muted and spec.maintenance_muted:
-            return []
-        if in_quiet_hours(local_now.time(), parse_hhmm(ns.quiet_start), parse_hhmm(ns.quiet_end)):
-            return []
+    if suppressed_by_schedule(event_type, ns, local_now, alerts_muted):
+        return []
     return [c for c in CHANNELS if c in ready and ns.channel_enabled(c) and rules.get((event_type, c), False)]
