@@ -55,3 +55,21 @@ def test_import_updates_ip_of_known_mac(db):
 def test_import_rejects_wrong_header(db):
     with pytest.raises(ValueError, match="missing columns"):
         import_csv(db, "Device,IP\nX,192.168.1.10\n", PLAN)
+
+
+def test_import_new_device_uses_group_default_access(db):
+    import_csv(db, SAMPLE, PLAN)
+    meters = db.scalar(select(Group).where(Group.name == "Power meters"))
+    meters.default_access = Access.lan_only
+    db.flush()
+    extra = SAMPLE + "PLUG_OVEN,00:00:5E:00:53:21,192.168.1.121,Power meters\n"
+    import_csv(db, extra, PLAN)
+    assert db.scalar(select(Device.access).where(Device.name == "PLUG_OVEN")) is Access.lan_only
+
+
+def test_import_rename_regenerates_hostname(db):
+    import_csv(db, SAMPLE, PLAN)
+    renamed = SAMPLE.replace("LAPTOP_A,00:00:5e:00:53:10", "LAPTOP_WORK,00:00:5e:00:53:10")
+    import_csv(db, renamed, PLAN)
+    device = db.scalar(select(Device).where(Device.mac == "00:00:5E:00:53:10"))
+    assert (device.name, device.hostname) == ("LAPTOP_WORK", "laptop-work")

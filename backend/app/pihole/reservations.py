@@ -45,6 +45,7 @@ class HostDiff:
     to_add: list[HostLine] = field(default_factory=list)
     to_remove: list[str] = field(default_factory=list)
     unmanaged: list[str] = field(default_factory=list)
+    failed: list[str] = field(default_factory=list)
 
     @property
     def empty(self) -> bool:
@@ -55,6 +56,7 @@ class HostDiff:
             "to_add": [h.render() for h in self.to_add],
             "to_remove": list(self.to_remove),
             "unmanaged": list(self.unmanaged),
+            "failed": list(self.failed),
         }
 
 

@@ -30,7 +30,7 @@ def sync_apply(db: Session = Depends(get_db), pihole: PiholeClient = Depends(get
     try:
         diff = apply_sync(db, pihole, settings.reservation_lease)
     except PiholeError as exc:
-        db.rollback()
+        db.commit()
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(exc)) from exc
     db.commit()
     return diff.as_dict()

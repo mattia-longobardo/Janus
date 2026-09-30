@@ -10,3 +10,10 @@ Self-hosted control for a home LAN: device inventory, static IPs through Pi-hole
     scripts/test.sh
 
 Needs a reachable Postgres database `janus_test` (see `.env.example`).
+
+## Deploy (homelab)
+
+    cp .env.example .env   # fill DB_JANUS_PASSWORD, JANUS_INTERNAL_TOKEN, JANUS_PIHOLE_PASSWORD
+    docker compose up -d --build
+
+The worker starts in `JANUS_SYNC_MODE=dry-run`: it logs the reservation diff and never writes to Pi-hole.

@@ -1,3 +1,5 @@
+import pytest
+
 from app.models import Access, Device, Group
 
 PEOPLE = {"name": "People", "color": "#6FB7FF", "icon": "device",
@@ -65,3 +67,16 @@ def test_next_free_ip(client, db):
     db.flush()
     assert client.get(f"/api/groups/{gid}/next-free-ip").json() == {"ip": "192.168.1.11"}
     assert client.get("/api/groups/9999/next-free-ip").status_code == 404
+
+
+@pytest.mark.parametrize("field", ["name", "color", "icon", "range_start", "range_end", "default_access"])
+def test_patch_group_null_required_field_is_422(client, field):
+    gid = client.post("/api/groups", json=PEOPLE).json()["id"]
+    response = client.patch(f"/api/groups/{gid}", json={field: None})
+    assert response.status_code == 422
+
+
+def test_patch_group_can_clear_offline_threshold(client):
+    gid = client.post("/api/groups", json={**PEOPLE, "offline_alert_hours": 6}).json()["id"]
+    response = client.patch(f"/api/groups/{gid}", json={"offline_alert_hours": None})
+    assert response.status_code == 200 and response.json()["offline_alert_hours"] is None

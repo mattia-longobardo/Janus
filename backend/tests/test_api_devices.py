@@ -74,3 +74,8 @@ def test_keeping_own_ip_is_not_a_conflict(client, seeded):
 def test_unknown_group_is_422(client, seeded):
     resp = client.patch(f"/api/devices/{seeded['laptop'].id}", json={"group_id": 9999})
     assert resp.status_code == 422
+
+
+def test_patch_device_null_name_is_422(client, seeded):
+    response = client.patch(f"/api/devices/{seeded['laptop'].id}", json={"name": None})
+    assert response.status_code == 422
