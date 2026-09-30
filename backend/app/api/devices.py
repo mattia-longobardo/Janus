@@ -15,6 +15,7 @@ from app.net.ipplan import AssignmentError, check_assignment
 from app.net.names import hostname_for
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
+APPROVED = {Access.authorized, Access.lan_only}
 
 
 class DeviceOut(BaseModel):
@@ -22,12 +23,14 @@ class DeviceOut(BaseModel):
     mac: str | None
     name: str
     hostname: str
-    group_id: int
+    group_id: int | None
     static_ip: str | None
     access: Access
     vendor: str | None
     private_mac: bool
     online: bool
+    last_ip: str | None
+    dhcp_hostname: str | None
     first_seen: datetime | None
     last_seen: datetime | None
 
@@ -47,7 +50,7 @@ class DevicePatch(BaseModel):
         return self
 
 
-def _get(db: Session, device_id: uuid.UUID) -> Device:
+def get_device_or_404(db: Session, device_id: uuid.UUID) -> Device:
     device = db.get(Device, device_id)
     if device is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "device not found")
@@ -68,12 +71,12 @@ def list_devices(group_id: int | None = None, access: Access | None = None,
 
 @router.get("/{device_id}", response_model=DeviceOut)
 def get_device(device_id: uuid.UUID, db: Session = Depends(get_db)) -> Device:
-    return _get(db, device_id)
+    return get_device_or_404(db, device_id)
 
 
 @router.patch("/{device_id}", response_model=DeviceOut)
 def update_device(device_id: uuid.UUID, body: DevicePatch, db: Session = Depends(get_db)) -> Device:
-    device = _get(db, device_id)
+    device = get_device_or_404(db, device_id)
     fields = body.model_dump(exclude_unset=True)
     changes: dict[str, list[object]] = {}
 
@@ -85,6 +88,8 @@ def update_device(device_id: uuid.UUID, body: DevicePatch, db: Session = Depends
 
     new_ip = fields.get("static_ip", device.static_ip)
     if new_ip is not None and ("static_ip" in fields or group is not device.group):
+        if group is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "device has no group: approve it first")
         taken = {
             IPv4Address(ip)
             for ip in db.scalars(select(Device.static_ip).where(Device.static_ip.is_not(None), Device.id != device.id))
@@ -94,20 +99,28 @@ def update_device(device_id: uuid.UUID, body: DevicePatch, db: Session = Depends
         except AssignmentError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 
+    new_access = fields.get("access")
+    if new_access in APPROVED and new_access is not device.access and (
+        device.mac is None or group is None or new_ip is None
+    ):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "a device needs a MAC, a group and a static IP: use /approve"
+        )
+
     if new_ip != device.static_ip:
         changes["static_ip"] = [device.static_ip, new_ip]
         device.static_ip = new_ip
     if group is not device.group:
-        changes["group"] = [device.group.name, group.name]
+        changes["group"] = [device.group.name if device.group else None, group.name if group else None]
         device.group = group
     if "name" in fields and fields["name"] != device.name:
         others = set(db.scalars(select(Device.hostname).where(Device.id != device.id)))
         changes["name"] = [device.name, fields["name"]]
         device.name = fields["name"]
         device.hostname = hostname_for(device.name, others)
-    if fields.get("access") is not None and fields["access"] is not device.access:
-        changes["access"] = [device.access.value, fields["access"].value]
-        device.access = fields["access"]
+    if new_access is not None and new_access is not device.access:
+        changes["access"] = [device.access.value, new_access.value]
+        device.access = new_access
 
     if changes:
         record_event(db, "device.updated", device.mac, {"changes": changes})

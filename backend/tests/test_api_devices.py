@@ -79,3 +79,37 @@ def test_unknown_group_is_422(client, seeded):
 def test_patch_device_null_name_is_422(client, seeded):
     response = client.patch(f"/api/devices/{seeded['laptop'].id}", json={"name": None})
     assert response.status_code == 422
+
+
+def _pending(db):
+    device = Device(mac="00:00:5E:00:53:40", name="Unknown", hostname="unknown", group_id=None,
+                    static_ip=None, access=Access.pending, last_ip="192.168.1.243")
+    db.add(device)
+    db.flush()
+    return device
+
+
+def test_pending_device_lists_without_group(client, db, seeded):
+    _pending(db)
+    body = client.get("/api/devices", params={"access": "pending"}).json()
+    assert [(d["name"], d["group_id"], d["last_ip"]) for d in body] == [("Unknown", None, "192.168.1.243")]
+
+
+def test_patch_ip_on_device_without_group_is_422(client, db, seeded):
+    device = _pending(db)
+    response = client.patch(f"/api/devices/{device.id}", json={"static_ip": "192.168.1.15"})
+    assert response.status_code == 422 and "no group" in response.json()["detail"]
+
+
+def test_patch_cannot_authorize_a_pending_device(client, db, seeded):
+    device = _pending(db)
+    response = client.patch(f"/api/devices/{device.id}", json={"access": "authorized"})
+    assert response.status_code == 422 and "approve" in response.json()["detail"]
+
+
+def test_rename_placeholder_without_mac_still_works(client, db, seeded):
+    knob = Device(mac=None, name="KNOB", hostname="knob", group=seeded["people"], static_ip="192.168.1.14",
+                  access=Access.authorized)
+    db.add(knob)
+    db.flush()
+    assert client.patch(f"/api/devices/{knob.id}", json={"name": "KNOB 2"}).status_code == 200

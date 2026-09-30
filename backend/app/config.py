@@ -19,6 +19,23 @@ class Settings(BaseSettings):
     reconcile_interval_s: int = 300
     heartbeat_path: str = "/tmp/janus-worker.heartbeat"
     timezone: str = "Europe/Rome"
+    redis_url: str = "redis://localhost:6379/3"
+    gotify_url: str = ""
+    gotify_token: str = ""
+    smtp_host: str = "mx.longobardo.me"
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_sender: str = ""
+    notify_email: str = ""
+    base_url: str = "https://janus.longobardo.me"
+    presence_timeout_s: int = 300
+    presence_interval_s: int = 60
+    dispatch_interval_s: int = 15
+    sentinel_interface: str = "enp5s0"
+    sweep_interval_s: int = 60
+    sentinel_heartbeat_path: str = "/tmp/janus-sentinel.heartbeat"
+    sighting_retention_days: int = 30
 
 
 settings = Settings()

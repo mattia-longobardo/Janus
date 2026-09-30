@@ -1,6 +1,8 @@
+from datetime import time
+
 from sqlalchemy import select
 
-from app.models import Access, Device, Event, Group
+from app.models import Access, Device, Event, Group, MaintenanceWindow, NotificationRule, Sighting
 
 
 def test_group_and_device_round_trip(db):
@@ -35,3 +37,26 @@ def test_event_payload_defaults_to_empty_dict(db):
     db.flush()
     db.refresh(event)
     assert event.payload == {} and event.ts is not None
+
+
+def test_pending_device_without_group(db):
+    device = Device(mac="00:00:5E:00:53:40", name="Unknown", hostname="unknown", group_id=None, static_ip=None,
+                    access=Access.pending, last_ip="192.168.1.243", dhcp_hostname="android-1")
+    db.add(device)
+    db.flush()
+    assert device.group is None and device.last_ip == "192.168.1.243"
+
+
+def test_sighting_window_and_rule_defaults(db):
+    db.add_all([
+        Sighting(mac="00:00:5E:00:53:40", ip="192.168.1.243", source="arp"),
+        MaintenanceWindow(name="Reboot", start_time=time(5, 0), duration_min=15, days=127),
+        NotificationRule(event_type="device.new", channel="email"),
+    ])
+    db.flush()
+    window = db.scalar(select(MaintenanceWindow))
+    assert window.enabled and window.mute_alerts and window.pause_isolation
+    sighting = db.scalar(select(Sighting))
+    db.refresh(sighting)
+    assert sighting.payload == {} and sighting.ts is not None
+    assert db.scalar(select(NotificationRule)).enabled is True
