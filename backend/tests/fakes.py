@@ -40,5 +40,8 @@ class FakePihole:
         self._write("remove", line)
         self.hosts.remove(line)
 
+    def revoke_lease(self, ip: str) -> None:
+        self._write("revoke", ip)
+
     def close(self) -> None:
         return None
