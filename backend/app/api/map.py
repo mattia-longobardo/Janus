@@ -1,9 +1,10 @@
 import uuid
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -14,8 +15,8 @@ router = APIRouter(prefix="/api/map", tags=["map"])
 
 class PositionIn(BaseModel):
     device_id: uuid.UUID
-    x: float
-    y: float
+    x: float = Field(allow_inf_nan=False, ge=-1e6, le=1e6)
+    y: float = Field(allow_inf_nan=False, ge=-1e6, le=1e6)
 
 
 class LinkIn(BaseModel):
@@ -40,7 +41,7 @@ def get_map(db: Session = Depends(get_db)) -> dict[str, Any]:
 
 
 @router.put("/positions")
-def put_positions(body: list[PositionIn], db: Session = Depends(get_db)) -> dict[str, int]:
+def put_positions(body: Annotated[list[PositionIn], Body(max_length=1000)], db: Session = Depends(get_db)) -> dict[str, int]:
     updated = 0
     for item in body:
         device = db.get(Device, item.device_id)
@@ -65,7 +66,11 @@ def create_link(body: LinkIn, db: Session = Depends(get_db)) -> dict[str, Any]:
         raise HTTPException(status.HTTP_409_CONFLICT, "these devices are already linked")
     link = Link(source_id=body.source_id, target_id=body.target_id, kind=body.kind, label=body.label)
     db.add(link)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "these devices are already linked") from exc
     return _link(link)
 
 

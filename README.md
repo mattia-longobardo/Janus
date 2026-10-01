@@ -20,3 +20,7 @@ The worker starts in `JANUS_SYNC_MODE=dry-run`: it logs the reservation diff and
 `janus-sentinel` runs on the host network to see ARP and DHCP traffic (see the AGENTS.md exception); it stays user 1000 through a `cap_net_raw` file capability.
 
 `janus-scanner` runs unprivileged `nmap -sT -sV` one host at a time on groups with `scan_enabled` (or on request via `POST /api/devices/{id}/scan`). Identity comes only from local data: the offline IEEE OUI file, DHCP/mDNS/NetBIOS/SSDP announcements, and the local Pi-hole query log.
+
+## Web app
+
+`frontend/` is a Next.js app served from the `janus` container on port 3000 behind Traefik (`https://${JANUS_HOST}`), with Authentik sign-in (Auth.js). It forwards `/api/*` to the FastAPI backend on `127.0.0.1:8000`, adding the internal token only for signed-in users. Frontend tests: `cd frontend && npm test`.

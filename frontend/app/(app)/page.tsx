@@ -22,7 +22,7 @@ export default function OverviewPage() {
   const blocked = devices.filter((d) => d.access === "blocked");
   const stats = [
     { label: "Approved", value: approved.length, note: `${approved.filter((d) => d.online).length} online`, tone: "text-text" },
-    { label: "Online now", value: devices.filter((d) => d.online).length, note: `${approved.filter((d) => !d.online && d.last_seen).length} approved offline`, tone: "text-ok" },
+    { label: "Online now", value: devices.filter((d) => d.online).length, note: `${approved.filter((d) => !d.online).length} approved offline`, tone: "text-ok" },
     { label: "Pending", value: pending.length, note: settings.sync_mode === "apply" ? "in quarantine" : "detected (dry-run)", tone: "text-accent-text" },
     { label: "Blocked", value: blocked.length, note: "no network", tone: "text-bad" },
   ];

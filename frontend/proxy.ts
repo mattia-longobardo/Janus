@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
+import { isAllowed } from "@/lib/allowlist";
 
 export const proxy = auth((req) => {
-  if (req.auth) return NextResponse.next();
+  if (req.auth?.user && isAllowed(req.auth.user.email)) return NextResponse.next();
   if (req.nextUrl.pathname.startsWith("/api/")) {
     return NextResponse.json({ detail: "not signed in" }, { status: 401 });
   }
@@ -13,5 +14,5 @@ export const proxy = auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!api/auth|api/healthz|login|_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)"],
+  matcher: ["/((?!api/auth(?:/|$)|api/healthz$|login$|_next/static/|_next/image(?:/|$)|favicon\\.ico$|icon\\.svg$|robots\\.txt$).*)"],
 };

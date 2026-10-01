@@ -11,16 +11,12 @@ type AccessChoice = "" | "authorized" | "lan_only";
 
 export function ApproveForm({ device, groups, onApproved }: { device: Device; groups: Group[]; onApproved: (result: Approval) => void }) {
   const [name, setName] = useState(device.dhcp_hostname ?? device.name);
-  const [groupId, setGroupId] = useState<number | "">(groups[0]?.id ?? "");
+  const [groupId, setGroupId] = useState<number | "">("");
   const [ip, setIp] = useState("");
   const [access, setAccess] = useState<AccessChoice>("");
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const group = groups.find((g) => g.id === groupId);
-
-  useEffect(() => {
-    if (groupId === "" && groups.length > 0) setGroupId(groups[0].id);
-  }, [groups, groupId]);
 
   useEffect(() => {
     if (groupId === "") return;
@@ -66,7 +62,10 @@ export function ApproveForm({ device, groups, onApproved }: { device: Device; gr
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required maxLength={64} />
         </Field>
         <Field label="Group">
-          <select className={inputClass} value={groupId} onChange={(e) => setGroupId(Number(e.target.value))}>
+          <select className={inputClass} value={groupId} onChange={(e) => setGroupId(Number(e.target.value))} required>
+            <option value="" disabled>
+              Choose a group…
+            </option>
             {groups.map((g) => (
               <option key={g.id} value={g.id}>
                 {g.name}

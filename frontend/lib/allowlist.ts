@@ -3,6 +3,6 @@ export function isAllowed(email: string | null | undefined, allowlist: string = 
     .split(",")
     .map((entry) => entry.trim().toLowerCase())
     .filter(Boolean);
-  if (allowed.length === 0) return true;
+  if (allowed.length === 0) return false;
   return Boolean(email) && allowed.includes(String(email).toLowerCase());
 }

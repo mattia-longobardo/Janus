@@ -21,6 +21,8 @@ describe("ApproveForm", () => {
     });
     const onApproved = vi.fn();
     render(<ApproveForm device={device} groups={groups} onApproved={onApproved} />);
+    expect((screen.getByRole("button", { name: "Approve and assign IP" }) as HTMLButtonElement).disabled).toBe(true);
+    await userEvent.selectOptions(screen.getByLabelText("Group"), "1");
     const ip = screen.getByLabelText("Static IP") as HTMLInputElement;
     await waitFor(() => expect(ip.value).toBe("192.168.1.12"));
     const name = screen.getByLabelText("Name");

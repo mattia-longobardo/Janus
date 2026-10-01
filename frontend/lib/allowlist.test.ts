@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import { isAllowed } from "@/lib/allowlist";
 
 describe("isAllowed", () => {
-  it("lets everyone in when the allowlist is empty", () => {
-    expect(isAllowed("someone@example.org", "")).toBe(true);
-    expect(isAllowed(undefined, " , ")).toBe(true);
+  it("lets nobody in when the allowlist is empty", () => {
+    expect(isAllowed("someone@example.org", "")).toBe(false);
+    expect(isAllowed(undefined, " , ")).toBe(false);
   });
 
   it("matches emails case-insensitively", () => {

@@ -1,11 +1,20 @@
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request, status
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.api import approval, devices, events, groups, health, intel, maintenance, map, notifications, settings, sync
 from app.security import require_internal
 
 
+async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+    detail = [{"loc": list(err.get("loc", ())), "msg": err.get("msg", "invalid"), "type": err.get("type", "")}
+              for err in exc.errors()]
+    return JSONResponse({"detail": detail}, status_code=status.HTTP_422_UNPROCESSABLE_CONTENT)
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="Janus")
+    app.add_exception_handler(RequestValidationError, validation_error)
     app.include_router(health.router)
     protected = [Depends(require_internal)]
     for router in (groups.router, devices.router, approval.router, sync.router,

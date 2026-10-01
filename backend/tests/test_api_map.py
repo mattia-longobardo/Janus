@@ -49,3 +49,25 @@ def test_links_disappear_with_their_device(client, db, pair):
     db.flush()
     db.expire_all()
     assert client.get("/api/map").json()["links"] == []
+
+
+def test_positions_reject_non_finite_and_huge_values(client, pair):
+    a, _ = pair
+    for bad in ('NaN', 'Infinity', '1e9'):
+        body = f'[{{"device_id": "{a.id}", "x": {bad}, "y": 0}}]'
+        response = client.put("/api/map/positions", content=body, headers={"content-type": "application/json"})
+        assert response.status_code == 422
+    assert client.get("/api/map").status_code == 200
+
+
+def test_reverse_duplicate_blocked_by_database(db, pair):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import Link
+
+    a, b = pair
+    db.add(Link(source_id=a.id, target_id=b.id, kind="wired"))
+    db.flush()
+    db.add(Link(source_id=b.id, target_id=a.id, kind="wifi"))
+    with pytest.raises(IntegrityError):
+        db.flush()

@@ -31,7 +31,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <p className="text-sm text-muted">Home network control. Sign in with your Authentik account.</p>
         {error && (
           <p role="alert" className="rounded-lg border border-bad px-3 py-2 text-sm text-bad">
-            Sign-in was refused. Ask the owner to give your account access to Janus.
+            {error === "AccessDenied"
+              ? "This account is not allowed to use Janus."
+              : "Sign-in is not available right now. Check the Authentik application for Janus and try again."}
           </p>
         )}
         <form action={login}>

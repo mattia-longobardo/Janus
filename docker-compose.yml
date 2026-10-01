@@ -15,24 +15,40 @@ services:
       - JANUS_INTERNAL_TOKEN=${JANUS_INTERNAL_TOKEN}
       - JANUS_PIHOLE_URL=http://192.168.1.220:1000
       - JANUS_PIHOLE_PASSWORD=${JANUS_PIHOLE_PASSWORD}
+      - BACKEND_URL=http://127.0.0.1:8000
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=https://${JANUS_HOST}
+      - AUTH_TRUST_HOST=true
+      - AUTH_AUTHENTIK_ID=${AUTH_AUTHENTIK_ID}
+      - AUTH_AUTHENTIK_SECRET=${AUTH_AUTHENTIK_SECRET}
+      - AUTH_AUTHENTIK_ISSUER=https://${AUTHENTIK_HOST}/application/o/janus/
+      - JANUS_ALLOWED_EMAILS=${JANUS_ALLOWED_EMAILS}
       - TZ=Europe/Rome
     restart: unless-stopped
-    mem_limit: 512m
-    cpus: "0.5"
+    mem_limit: 1g
+    cpus: "1.0"
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/health"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/health && curl -fsS http://127.0.0.1:3000/api/healthz"]
       interval: 15s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 40s
     labels:
       - "autoheal=true"
+      - "traefik.enable=true"
+      - "traefik.docker.network=proxy_public"
+      - "traefik.http.routers.janus-router.rule=Host(`${JANUS_HOST}`)"
+      - "traefik.http.routers.janus-router.entrypoints=web"
+      - "traefik.http.services.janus-service.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.janus-https.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.janus-router.middlewares=janus-https"
     networks:
+      - proxy_public
       - db_internal
 
 # Janus Worker # ---------------------------------------------------------------------------------------------------------
@@ -145,6 +161,8 @@ services:
       - db_internal
 
 networks:
+  proxy_public:
+    external: true
   db_internal:
     external: true
   mail_internal:

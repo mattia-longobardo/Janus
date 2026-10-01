@@ -146,10 +146,11 @@ export default function MapPage() {
     });
   }, []);
 
-  const onNodeDragStop = useCallback(async (_: unknown, node: Node) => {
-    if (node.id.startsWith("box:")) return;
+  const onNodeDragStop = useCallback(async (_: unknown, _node: Node, moved: Node[]) => {
+    const devicesMoved = moved.filter((n) => !n.id.startsWith("box:"));
+    if (devicesMoved.length === 0) return;
     try {
-      await api.put("/map/positions", [{ device_id: node.id, x: node.position.x, y: node.position.y }]);
+      await api.put("/map/positions", devicesMoved.map((n) => ({ device_id: n.id, x: n.position.x, y: n.position.y })));
     } catch (err) {
       setMessage({ tone: "error", text: errorText(err) });
     }
@@ -253,7 +254,7 @@ export default function MapPage() {
           <Background gap={18} color="var(--dotgrid)" />
           <Controls showInteractive={false} />
         </ReactFlow>
-        <div className="pointer-events-none absolute right-4 top-4 flex flex-col gap-2 rounded-xl border border-line bg-card p-3 text-xs text-muted">
+        <div className="pointer-events-none absolute bottom-8 right-4 z-10 flex flex-col gap-2 rounded-xl border border-line bg-card p-3 text-xs text-muted">
           <span className="flex items-center gap-2">
             <span className="w-6 border-t-[1.5px] border-muted" />
             Wired

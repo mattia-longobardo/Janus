@@ -16,6 +16,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -162,7 +163,11 @@ class Service(Base):
 
 class Link(Base):
     __tablename__ = "links"
-    __table_args__ = (UniqueConstraint("source_id", "target_id", name="uq_links_source_target"),)
+    __table_args__ = (
+        UniqueConstraint("source_id", "target_id", name="uq_links_source_target"),
+        Index("uq_links_pair", func.least(text("source_id"), text("target_id")),
+              func.greatest(text("source_id"), text("target_id")), unique=True),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))

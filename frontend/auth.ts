@@ -12,7 +12,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       issuer: process.env.AUTH_AUTHENTIK_ISSUER,
     }),
   ],
-  session: { strategy: "jwt" },
+  session: { strategy: "jwt", maxAge: 12 * 60 * 60 },
   pages: { signIn: "/login", error: "/login" },
   callbacks: {
     signIn: ({ user, profile }) => isAllowed(profile?.email ?? user?.email),

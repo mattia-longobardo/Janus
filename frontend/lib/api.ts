@@ -29,7 +29,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     cache: "no-store",
   });
   if (response.status === 401 && typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
-    window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname)}`;
+    window.location.href = `/login?callbackUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`;
+    return new Promise<T>(() => {});
   }
   if (!response.ok) {
     let message = response.statusText || `HTTP ${response.status}`;
