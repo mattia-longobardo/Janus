@@ -1,0 +1,113 @@
+"use client";
+
+import clsx from "clsx";
+import { Bell, Clock3, Grid3x3, Layers, LayoutDashboard, LogOut, Monitor, ScrollText, Settings, Share2, X } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+import { logout } from "@/lib/auth-actions";
+import { useSettings } from "@/lib/settings-context";
+import type { Device } from "@/lib/types";
+import { useResource } from "@/lib/use-resource";
+
+const NAV = [
+  { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/map", label: "Network map", icon: Share2 },
+  { href: "/devices", label: "Devices", icon: Monitor, count: "all" },
+  { href: "/pending", label: "Pending", icon: Clock3, count: "pending" },
+  { href: "/ip-plan", label: "IP plan", icon: Grid3x3 },
+  { href: "/groups", label: "Groups", icon: Layers },
+  { href: "/notifications", label: "Notifications", icon: Bell },
+  { href: "/events", label: "Event log", icon: ScrollText },
+  { href: "/settings", label: "Settings", icon: Settings },
+] as const;
+
+export function Logo() {
+  return (
+    <span className="flex items-center gap-2.5">
+      <svg width="28" height="28" viewBox="0 0 32 32" fill="none" stroke="var(--accent)" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+        <path d="M13 4a12 12 0 0 0 0 24" />
+        <path d="M19 4a12 12 0 0 1 0 24" />
+        <path d="M16 9v14" />
+      </svg>
+      <span className="font-display text-2xl font-bold tracking-tight">Janus</span>
+    </span>
+  );
+}
+
+export function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; user: string }) {
+  const pathname = usePathname();
+  const { settings } = useSettings();
+  const { data: devices } = useResource<Device[]>("/devices", { refreshMs: 30_000 });
+  const counts = {
+    all: devices?.filter((d) => d.access !== "pending").length ?? 0,
+    pending: devices?.filter((d) => d.access === "pending").length ?? 0,
+  };
+  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+
+  return (
+    <>
+      {open && <button type="button" aria-label="Close menu" className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} />}
+      <nav
+        aria-label="Main"
+        className={clsx(
+          "fixed inset-y-0 left-0 z-40 flex w-64 flex-col gap-6 overflow-y-auto border-r border-line bg-side px-4 py-6 transition-transform lg:sticky lg:top-0 lg:h-dvh lg:translate-x-0",
+          open ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        <div className="flex items-center justify-between px-2">
+          <Logo />
+          <button type="button" aria-label="Close menu" className="flex size-11 items-center justify-center lg:hidden" onClick={onClose}>
+            <X className="size-5" />
+          </button>
+        </div>
+        <ul className="flex flex-col gap-1">
+          {NAV.map((item) => {
+            const Icon = item.icon;
+            const count = "count" in item ? counts[item.count] : undefined;
+            const active = isActive(item.href);
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  onClick={onClose}
+                  aria-current={active ? "page" : undefined}
+                  className={clsx(
+                    "flex min-h-11 items-center gap-3 rounded-lg border px-3 text-[15px]",
+                    active ? "border-line bg-card2 text-text" : "border-transparent text-muted hover:text-text",
+                  )}
+                >
+                  <Icon className="size-[18px]" aria-hidden />
+                  {item.label}
+                  {count !== undefined && count > 0 && (
+                    <span
+                      className={clsx(
+                        "ml-auto rounded-full px-2 py-0.5 font-mono text-xs",
+                        "count" in item && item.count === "pending" ? "bg-accent text-accent-ink" : "bg-line text-text2",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-auto flex flex-col gap-2 rounded-xl border border-line p-3.5 text-[13px] text-muted">
+          <span className="flex items-center gap-2">
+            <span className={clsx("size-2 rounded-full", settings.sync_mode === "apply" ? "bg-ok" : "bg-accent")} />
+            Pi-hole sync · {settings.sync_mode}
+          </span>
+          <span className="font-mono text-xs text-faint">{settings.timezone}</span>
+          <form action={logout} className="mt-1 flex items-center justify-between gap-2">
+            <span className="truncate text-xs">{user}</span>
+            <button type="submit" aria-label="Sign out" className="flex size-9 items-center justify-center text-muted hover:text-text">
+              <LogOut className="size-4" />
+            </button>
+          </form>
+        </div>
+      </nav>
+    </>
+  );
+}
