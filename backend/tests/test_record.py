@@ -89,7 +89,10 @@ def test_ip_conflict_detected_once_per_hour(db, known):
     assert _events(db, "ip.conflict") == []
     _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(seconds=90))
     [event] = _events(db, "ip.conflict")
-    assert event.payload == {"ip": "192.168.1.10", "macs": [KNOWN, other]}
+    assert event.payload["ip"] == "192.168.1.10"
+    assert event.payload["macs"] == [KNOWN, other]
+    assert (event.payload["owner"]["mac"], event.payload["claimant"]["mac"], event.payload["reserved"]) == (KNOWN, other, True)
+    assert event.mac == other
     later = NOW + timedelta(hours=2)
     _record(db, KNOWN, "192.168.1.10", at=later)
     _record(db, other, "192.168.1.10", at=later + timedelta(seconds=30))
@@ -174,3 +177,14 @@ def test_dhcp_handover_is_not_a_conflict(db, known):
     _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(seconds=80))
     _record(db, previous_holder, "192.168.1.31", at=NOW + timedelta(seconds=100))
     assert _events(db, "ip.conflict") == []
+
+
+def test_conflict_names_the_reservation_owner_even_when_it_answers_second(db, known):
+    other = "00:00:5E:00:53:61"
+    _record(db, other, "192.168.1.10")
+    _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(seconds=30))
+    _record(db, other, "192.168.1.10", at=NOW + timedelta(seconds=60))
+    [event] = _events(db, "ip.conflict")
+    assert event.payload["owner"]["name"] == "LAPTOP_A"
+    assert event.payload["claimant"]["mac"] == other
+    assert event.payload["reserved"] is True

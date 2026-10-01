@@ -47,6 +47,16 @@ def render(event: Event, device_name: str | None, *, base_url: str, tz: ZoneInfo
         return Message(f"Offline: {name}",
                        f"Not seen for more than {p.get('hours')} h (last seen {_local(p.get('last_seen'), tz)})", priority, url)
     if kind == "ip.conflict":
+        claimant, owner = p.get("claimant"), p.get("owner")
+        if claimant and owner:
+            relation = "which is assigned to" if p.get("reserved") else "which is already used by"
+            return Message(
+                f"{claimant['name']} is trying to take {p.get('ip')}",
+                f"{claimant['name']} ({claimant['mac']}) is trying to take {p.get('ip')}, "
+                f"{relation} {owner['name']} ({owner['mac']}).",
+                priority,
+                f"{base_url}/devices/{claimant['device_id']}",
+            )
         return Message(f"IP conflict on {p.get('ip')}", "Claimed by " + ", ".join(p.get("macs", [])), priority, base_url)
     if kind == "device.ip_mismatch":
         return Message(f"{name} is using {p.get('ip')}", f"Its reserved address is {p.get('expected')}", priority, url)

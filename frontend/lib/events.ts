@@ -32,6 +32,9 @@ export function describeEvent(event: Pick<EventItem, "type" | "payload">): strin
     case "device.gateway":
       return "Gateway registered";
     case "ip.conflict":
+      if (p.claimant && p.owner) {
+        return `${p.claimant.name} (${p.claimant.mac}) tried to take ${p.ip}, ${p.reserved ? "assigned to" : "used by"} ${p.owner.name} (${p.owner.mac})`;
+      }
       return `IP conflict on ${p.ip}`;
     case "infra.down":
       return `${SERVICES[p.service] ?? p.service} unreachable`;
