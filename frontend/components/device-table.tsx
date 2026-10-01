@@ -4,6 +4,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { HealthIcon } from "@/components/health";
 import { Badge, IconTile, Pagination, StatusDot } from "@/components/ui";
 import { deviceLook } from "@/lib/group-icons";
 import { ACCESS_LABELS, deviceIp, formatDateTime, ipSortKey, relativeTime } from "@/lib/format";
@@ -149,6 +150,7 @@ export function DeviceTable({
                         <Link href={`/devices/${d.id}`} className="text-text hover:underline">
                           {d.name}
                         </Link>
+                        <HealthIcon device={d} />
                         {d.private_mac && <Badge tone="accent">private MAC</Badge>}
                         {(d.access === "lan_only" || d.access === "blocked") && (
                           <Badge tone={d.access === "blocked" ? "bad" : "neutral"}>{ACCESS_LABELS[d.access]}</Badge>

@@ -29,7 +29,7 @@ export default function OverviewPage() {
   const devicesRes = useResource<Device[]>("/devices", { refreshMs: 15_000 });
   const groupsRes = useResource<Group[]>("/groups");
   const [query, setQuery] = useState("");
-  const [groupId, setGroupId] = useState<number | "all">("all");
+  const [groupId, setGroupId] = useState<number | "all" | "issues">("all");
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string }>();
   const search = useRef<HTMLInputElement>(null);
 
@@ -52,7 +52,8 @@ export default function OverviewPage() {
   const blocked = devices.filter((d) => d.access === "blocked");
   const online = approved.filter((d) => d.online).length;
   const searched = useMemo(() => filterDevices(approved, { query, groupId: "all", access: "all" }), [approved, query]);
-  const shown = groupId === "all" ? searched : searched.filter((d) => d.group_id === groupId);
+  const attention = searched.filter((d) => d.health !== "ok");
+  const shown = groupId === "all" ? searched : groupId === "issues" ? attention : searched.filter((d) => d.group_id === groupId);
   const groupChips = groups
     .map((g) => ({ group: g, count: searched.filter((d) => d.group_id === g.id).length }))
     .filter((chip) => chip.count > 0);
@@ -220,6 +221,11 @@ export default function OverviewPage() {
             <Chip active={groupId === "all"} count={searched.length} onClick={() => setGroupId("all")}>
               All
             </Chip>
+            {attention.length > 0 && (
+              <Chip active={groupId === "issues"} count={attention.length} onClick={() => setGroupId("issues")}>
+                <span className={attention.some((d) => d.health === "critical") ? "text-bad" : "text-accent-text"}>Needs attention</span>
+              </Chip>
+            )}
             {groupChips.map(({ group, count }) => (
               <Chip key={group.id} active={groupId === group.id} count={count} onClick={() => setGroupId(group.id)}>
                 {group.name}
