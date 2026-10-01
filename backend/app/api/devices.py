@@ -12,12 +12,19 @@ from app.db import get_db
 from app.events import record_event
 from app.export import devices_workbook
 from app.general import current_tz
+from app.health import annotate
 from app.models import Access, Device, Group
 from app.net.ipplan import AssignmentError, check_assignment
 from app.net.names import hostname_for
 
 router = APIRouter(prefix="/api/devices", tags=["devices"])
 APPROVED = {Access.authorized, Access.lan_only}
+
+
+class IssueOut(BaseModel):
+    kind: str
+    severity: str
+    message: str
 
 
 class DeviceOut(BaseModel):
@@ -36,6 +43,8 @@ class DeviceOut(BaseModel):
     first_seen: datetime | None
     last_seen: datetime | None
     last_scan_at: datetime | None
+    issues: list[IssueOut] = []
+    health: str = "ok"
 
     model_config = {"from_attributes": True}
 
@@ -69,7 +78,8 @@ def list_devices(group_id: int | None = None, access: Access | None = None,
     if access is not None:
         query = query.where(Device.access == access)
     devices = list(db.scalars(query))
-    return sorted(devices, key=lambda d: (d.static_ip is None, IPv4Address(d.static_ip or "0.0.0.0"), d.name))
+    ordered = sorted(devices, key=lambda d: (d.static_ip is None, IPv4Address(d.static_ip or "0.0.0.0"), d.name))
+    return annotate(db, ordered)
 
 
 @router.get("/export.xlsx")
@@ -85,7 +95,7 @@ def export_devices(group_id: int | None = None, access: Access | None = None, db
 
 @router.get("/{device_id}", response_model=DeviceOut)
 def get_device(device_id: uuid.UUID, db: Session = Depends(get_db)) -> Device:
-    return get_device_or_404(db, device_id)
+    return annotate(db, [get_device_or_404(db, device_id)])[0]
 
 
 @router.patch("/{device_id}", response_model=DeviceOut)

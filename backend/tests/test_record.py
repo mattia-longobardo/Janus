@@ -102,6 +102,8 @@ def test_no_conflict_when_previous_owner_is_stale(db, known):
 
 def test_ip_mismatch_for_approved_device(db, known):
     _record(db, KNOWN, "192.168.1.17")
+    assert _events(db, "device.ip_mismatch") == []
+    _record(db, KNOWN, "192.168.1.17", at=NOW + timedelta(minutes=1))
     [event] = _events(db, "device.ip_mismatch")
     assert event.payload == {"device_id": str(known.id), "name": "LAPTOP_A", "ip": "192.168.1.17",
                              "expected": "192.168.1.10"}
@@ -119,9 +121,11 @@ def test_second_mac_claiming_the_gateway_is_pending(db):
 
 def test_ip_mismatch_repeats_only_daily_for_the_same_address(db, known):
     _record(db, KNOWN, "192.168.1.17")
+    _record(db, KNOWN, "192.168.1.17", at=NOW + timedelta(minutes=1))
     _record(db, KNOWN, "192.168.1.17", at=NOW + timedelta(hours=2))
     assert len(_events(db, "device.ip_mismatch")) == 1
     _record(db, KNOWN, "192.168.1.18", at=NOW + timedelta(hours=3))
+    _record(db, KNOWN, "192.168.1.18", at=NOW + timedelta(hours=3, minutes=1))
     assert len(_events(db, "device.ip_mismatch")) == 2
     _record(db, KNOWN, "192.168.1.18", at=NOW + timedelta(hours=28))
     assert len(_events(db, "device.ip_mismatch")) == 3
@@ -147,3 +151,14 @@ def test_alternating_mdns_subsets_do_not_write_every_packet(db, known):
     assert db.scalar(select(func.count()).select_from(Sighting).where(Sighting.source == "mdns")) == 3
     _record(db, KNOWN, "192.168.1.10", source="mdns", at=NOW + timedelta(minutes=13), services=("_ssh._tcp", "_smb._tcp"))
     assert db.scalar(select(func.count()).select_from(Sighting).where(Sighting.source == "mdns")) == 4
+
+
+def test_link_local_and_boot_blips_never_raise_a_mismatch(db, known):
+    _record(db, KNOWN, "169.254.191.63")
+    _record(db, KNOWN, "169.254.191.63", at=NOW + timedelta(minutes=1))
+    assert known.last_ip != "169.254.191.63"
+    _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(minutes=2))
+    _record(db, KNOWN, "192.168.1.30", at=NOW + timedelta(minutes=3))
+    _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(minutes=4))
+    assert _events(db, "device.ip_mismatch") == []
+    assert known.last_ip == "192.168.1.10"

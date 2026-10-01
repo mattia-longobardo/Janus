@@ -7,6 +7,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 
 import { InfoCard, InfoRow, StatCard } from "@/components/device-info";
+import { HealthBanner } from "@/components/health";
 import { adviceList, riskLevel, sortServices } from "@/components/device-security";
 import { EventList } from "@/components/event-list";
 import { Button, Card, Field, IconTile, Notice, StatusDot, inputClass } from "@/components/ui";
@@ -62,6 +63,7 @@ export default function DevicePage() {
   const services = sortServices(servicesRes.data ?? []);
   const risky = services.filter((s) => s.risk !== "none" && !s.muted);
   const mutedCount = services.filter((s) => s.risk !== "none" && s.muted).length;
+  const mismatch = device.issues.some((issue) => issue.kind === "ip_mismatch");
 
   async function toggleMute(service: ServiceItem) {
     try {
@@ -115,7 +117,7 @@ export default function DevicePage() {
                 <StatusDot online={device.online} />
                 {device.online ? "Online" : `Offline · seen ${relativeTime(device.last_seen)}`}
               </span>
-              <span className="font-mono">{device.static_ip ?? device.last_ip ?? "no IP"}</span>
+              <span className={clsx("font-mono", mismatch && "text-bad")}>{(mismatch ? device.last_ip : device.static_ip ?? device.last_ip) ?? "no IP"}</span>
               <span className="font-mono">{device.mac ?? "no MAC"}</span>
               <span
                 className={clsx(
@@ -149,6 +151,7 @@ export default function DevicePage() {
           )}
         </div>
       </header>
+      <HealthBanner device={device} />
       <hr className="border-line" />
       {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
       {editing && (
@@ -178,11 +181,17 @@ export default function DevicePage() {
         </InfoCard>
         <InfoCard title="Network">
           <InfoRow
-            label="IP"
+            label="Current IP"
             mono
-            value={device.static_ip ? `${device.static_ip} (static)` : device.last_ip ? `${device.last_ip} (dynamic)` : "—"}
-            source={device.static_ip ? "Pi-hole" : "ARP"}
+            value={
+              <span className={mismatch ? "text-bad" : undefined}>
+                {device.last_ip ?? "—"}
+                {mismatch ? " (wrong address)" : ""}
+              </span>
+            }
+            source="ARP"
           />
+          <InfoRow label="Reserved IP" mono value={device.static_ip ?? "none (dynamic)"} source="Pi-hole" />
           <InfoRow label="MAC" mono value={`${device.mac ?? "—"}${device.private_mac ? " (private)" : ""}`} source="ARP" />
           {device.dhcp_hostname && <InfoRow label="DHCP name" mono value={device.dhcp_hostname} source="DHCP" />}
           <InfoRow label="Access" value={ACCESS_LABELS[device.access]} source="Janus" />

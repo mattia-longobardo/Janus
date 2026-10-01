@@ -20,10 +20,11 @@ import {
 } from "@xyflow/react";
 import clsx from "clsx";
 import { toPng } from "html-to-image";
-import { Maximize, Minus, Plus } from "lucide-react";
+import { AlertTriangle, Maximize, Minus, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { HEALTH_COLOR, healthTitle } from "@/components/health";
 import { useResolvedTheme } from "@/components/theme-toggle";
 import { Button, Notice, PageHeader } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
@@ -62,6 +63,8 @@ function Tile({ color, children }: { color: string; children: React.ReactNode })
 
 function DeviceNode({ data }: NodeProps<Node<DeviceData>>) {
   const d = data.device;
+  const wrongIp = d.issues.some((issue) => issue.kind === "ip_mismatch");
+  const shownIp = wrongIp ? d.last_ip : deviceIp(d);
   const pending = d.access === "pending";
   const look = deviceLook(d, data.groups);
   const color = data.gateway ? "#C9CDD0" : look.color;
@@ -69,8 +72,13 @@ function DeviceNode({ data }: NodeProps<Node<DeviceData>>) {
   return (
     <div
       className={clsx("group relative flex items-center gap-[9px] rounded-lg bg-card pl-2 pr-2.5", !d.online && !pending && "opacity-55")}
-      style={{ width: data.w, height: data.h, border: pending ? "1.5px dashed var(--accent)" : `1px solid ${color}66` }}
-      title={`${d.name} · ${deviceIp(d) ?? "no IP"}`}
+      style={{
+        width: data.w,
+        height: data.h,
+        border: pending ? "1.5px dashed var(--accent)" : `1px solid ${color}66`,
+        boxShadow: d.health !== "ok" ? `0 0 0 2px ${HEALTH_COLOR[d.health]}` : undefined,
+      }}
+      title={[`${d.name} · ${shownIp ?? "no IP"}`, healthTitle(d)].filter(Boolean).join("\n")}
     >
       <Handle type="target" position={Position.Top} className="!size-3 !border-[1.5px] !border-accent !bg-card !opacity-0 group-hover:!opacity-100" />
       <Tile color={color}>
@@ -78,9 +86,15 @@ function DeviceNode({ data }: NodeProps<Node<DeviceData>>) {
       </Tile>
       <span className="flex min-w-0 flex-1 flex-col gap-px">
         <span className="truncate text-xs font-semibold leading-tight text-text">{d.name}</span>
-        {data.showIp && <span className="truncate font-mono text-[10.5px] leading-tight text-faint">{deviceIp(d) ?? "—"}</span>}
+        {data.showIp && (
+          <span className={clsx("truncate font-mono text-[10.5px] leading-tight", wrongIp ? "text-bad" : "text-faint")}>{shownIp ?? "—"}</span>
+        )}
       </span>
-      <span className={clsx("size-2 shrink-0 rounded-full", pending ? "bg-accent" : d.online ? "bg-ok" : "bg-off")} />
+      {d.health !== "ok" ? (
+        <AlertTriangle className="size-3.5 shrink-0" style={{ color: HEALTH_COLOR[d.health] }} strokeWidth={2.4} aria-label="Needs attention" />
+      ) : (
+        <span className={clsx("size-2 shrink-0 rounded-full", pending ? "bg-accent" : d.online ? "bg-ok" : "bg-off")} />
+      )}
       <Handle type="source" position={Position.Bottom} className="!size-3 !border-[1.5px] !border-accent !bg-card !opacity-0 group-hover:!opacity-100" />
     </div>
   );

@@ -78,12 +78,14 @@ def _check_conflict(db: Session, device: Device, ip: str, now: datetime) -> None
     record_event(db, "ip.conflict", device.mac, {"ip": ip, "macs": sorted([device.mac, rival.mac])}, ts=now)
 
 
-def _check_mismatch(db: Session, device: Device, ip: str, plan: NetworkPlan, now: datetime) -> None:
+def _check_mismatch(db: Session, device: Device, ip: str, previous_ip: str | None, plan: NetworkPlan,
+                    now: datetime) -> None:
     address = _address(ip)
     if (
         device.access not in APPROVED
         or device.static_ip is None
         or ip == device.static_ip
+        or ip != previous_ip
         or address is None
         or address in plan.quarantine
         or _recent(db, "device.ip_mismatch", now - MISMATCH_GAP, mac=device.mac, ip=ip)
@@ -133,10 +135,11 @@ def record_observation(db: Session, obs: Observation, plan: NetworkPlan, now: da
         device.first_seen = now
     if obs.hostname and obs.source == "dhcp":
         device.dhcp_hostname = obs.hostname
-    if obs.ip:
+    address = _address(obs.ip)
+    if obs.ip and address is not None and address in plan.subnet:
         device.last_ip = obs.ip
         db.flush()
         _check_conflict(db, device, obs.ip, now)
-        _check_mismatch(db, device, obs.ip, plan, now)
+        _check_mismatch(db, device, obs.ip, previous_ip, plan, now)
     db.flush()
     return device

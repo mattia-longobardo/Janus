@@ -16,6 +16,8 @@ export interface Device {
   first_seen: string | null;
   last_seen: string | null;
   last_scan_at: string | null;
+  issues: { kind: string; severity: "critical" | "warning"; message: string }[];
+  health: "ok" | "warning" | "critical";
 }
 
 export interface Group {
