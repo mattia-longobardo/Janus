@@ -1,4 +1,7 @@
+import uuid
 from ipaddress import IPv4Address
+from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -7,8 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.api.conflicts import commit_or_409
 from app.db import get_db
+from app.events import record_event
 from app.models import Access, Device, Group
-from app.net.ipplan import AssignmentError, IpRange, NetworkPlan, check_group_range, next_free
+from app.net.ipplan import AssignmentError, IpRange, NetworkPlan, check_assignment, check_group_range, next_free
 from app.netconfig import load_netconfig
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
@@ -168,8 +172,65 @@ def delete_group(group_id: int, db: Session = Depends(get_db)) -> Response:
 
 
 @router.get("/{group_id}/next-free-ip")
-def next_free_ip(group_id: int, db: Session = Depends(get_db)) -> dict[str, str | None]:
+def next_free_ip(group_id: int, device_id: uuid.UUID | None = None, db: Session = Depends(get_db)) -> dict[str, str | None]:
     group = _get(db, group_id)
-    taken = {IPv4Address(ip) for ip in db.scalars(select(Device.static_ip).where(Device.static_ip.is_not(None)))}
+    query = select(Device.static_ip).where(Device.static_ip.is_not(None))
+    if device_id is not None:
+        query = query.where(Device.id != device_id)
+    taken = {IPv4Address(ip) for ip in db.scalars(query)}
     free = next_free(plan(db), group.ip_range(), taken)
     return {"ip": str(free) if free else None}
+
+
+def _pinned_ips(db: Session) -> set[str]:
+    config = load_netconfig(db)
+    pinned = {config.gateway}
+    host = urlparse(config.pihole_url).hostname
+    if host:
+        pinned.add(host)
+    return pinned
+
+
+@router.post("/{group_id}/compact")
+def compact_group(group_id: int, dry_run: bool = True, db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Renumber the group's devices from the start of its range, keeping their order and closing gaps."""
+    group = _get(db, group_id)
+    network = plan(db)
+    pinned_ips = _pinned_ips(db)
+    members = sorted(
+        db.scalars(select(Device).where(Device.group_id == group.id, Device.static_ip.is_not(None))),
+        key=lambda d: IPv4Address(d.static_ip),
+    )
+    movable = [d for d in members if d.static_ip not in pinned_ips]
+    member_ids = {d.id for d in movable}
+    blocked = {
+        IPv4Address(ip)
+        for ip in db.scalars(select(Device.static_ip).where(Device.static_ip.is_not(None)))
+        if ip
+    } - {IPv4Address(d.static_ip) for d in movable}
+    blocked |= {IPv4Address(ip) for ip in pinned_ips if ip}
+    targets: list[IPv4Address] = []
+    for addr in group.ip_range():
+        if len(targets) == len(movable):
+            break
+        try:
+            targets.append(check_assignment(network, str(addr), group.ip_range(), blocked))
+        except AssignmentError:
+            continue
+    moves = [
+        {"device_id": str(d.id), "name": d.name, "from": d.static_ip, "to": str(ip)}
+        for d, ip in zip(movable, targets, strict=False)
+        if d.static_ip != str(ip)
+    ]
+    pinned = [{"name": d.name, "ip": d.static_ip} for d in members if d.id not in member_ids]
+    if not dry_run and moves:
+        by_id = {str(d.id): d for d in movable}
+        for move in moves:
+            by_id[move["device_id"]].static_ip = None
+        db.flush()
+        for move in moves:
+            by_id[move["device_id"]].static_ip = move["to"]
+        record_event(db, "group.compacted", None, {"group": group.name, "moves": moves})
+        commit_or_409(db, "another change touched these addresses, try again")
+    return {"group": group.name, "dry_run": dry_run, "moves": moves, "unchanged": len(members) - len(moves),
+            "pinned": pinned}

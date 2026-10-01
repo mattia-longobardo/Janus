@@ -347,6 +347,17 @@ function EditDevice({ device, groups, onSaved }: { device: Device; groups: Group
     }
   }
 
+  async function firstFree() {
+    if (groupId === "") return;
+    try {
+      const result = await api.get<{ ip: string | null }>(`/groups/${groupId}/next-free-ip?device_id=${device.id}`);
+      if (result.ip) setIp(result.ip);
+      else setError("No free address left in this group's range.");
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
+
   async function save(event: FormEvent) {
     event.preventDefault();
     setError(undefined);
@@ -380,7 +391,12 @@ function EditDevice({ device, groups, onSaved }: { device: Device; groups: Group
           </select>
         </Field>
         <Field label="Static IP">
-          <input className={`${inputClass} font-mono`} value={ip} onChange={(e) => setIp(e.target.value)} />
+          <div className="flex gap-2">
+            <input className={`${inputClass} font-mono`} value={ip} onChange={(e) => setIp(e.target.value)} />
+            <Button className="shrink-0" disabled={groupId === ""} onClick={() => void firstFree()} title="Lowest free address in the group's range">
+              First free
+            </Button>
+          </div>
         </Field>
         <Field label="Access">
           <select className={inputClass} value={access} onChange={(e) => setAccess(e.target.value as Access)}>

@@ -1,4 +1,5 @@
 import pytest
+from sqlalchemy import select
 
 from app.models import Access, Device, Group
 
@@ -101,3 +102,51 @@ def test_unique_constraint_race_is_a_409(client, db, monkeypatch):
     response = client.post("/api/groups", json={**body, "range_start": "192.168.1.40", "range_end": "192.168.1.49"})
     assert response.status_code == 409
     assert "already" in response.json()["detail"]
+
+
+def test_next_free_ip_can_ignore_the_device_itself(client, db):
+    gid = client.post("/api/groups", json=PEOPLE).json()["id"]
+    first = Device(mac=None, name="A", hostname="a", group_id=gid, static_ip="192.168.1.10", access=Access.authorized)
+    late = Device(mac=None, name="B", hostname="b", group_id=gid, static_ip="192.168.1.15", access=Access.authorized)
+    db.add_all([first, late])
+    db.flush()
+    assert client.get(f"/api/groups/{gid}/next-free-ip", params={"device_id": str(late.id)}).json() == {"ip": "192.168.1.11"}
+    assert client.get(f"/api/groups/{gid}/next-free-ip", params={"device_id": str(first.id)}).json() == {"ip": "192.168.1.10"}
+
+
+def test_compact_closes_gaps_in_order_and_keeps_pinned_addresses(client, db):
+    from app.models import Event
+
+    network = client.post("/api/groups", json={**PEOPLE, "name": "Net", "range_start": "192.168.1.1",
+                                               "range_end": "192.168.1.9"}).json()["id"]
+    people = client.post("/api/groups", json=PEOPLE).json()["id"]
+    rows = [
+        ("GW", network, "192.168.1.1"), ("AP2", network, "192.168.1.5"),
+        ("C", people, "192.168.1.17"), ("A", people, "192.168.1.12"), ("B", people, "192.168.1.14"),
+        ("D", people, "192.168.1.10"),
+    ]
+    devices = {}
+    for name, gid, ip in rows:
+        devices[name] = Device(mac=None, name=name, hostname=name.lower(), group_id=gid, static_ip=ip,
+                               access=Access.authorized)
+    db.add_all(devices.values())
+    db.flush()
+
+    preview = client.post(f"/api/groups/{people}/compact").json()
+    assert preview["dry_run"] is True
+    assert [(m["name"], m["from"], m["to"]) for m in preview["moves"]] == [
+        ("A", "192.168.1.12", "192.168.1.11"), ("B", "192.168.1.14", "192.168.1.12"),
+        ("C", "192.168.1.17", "192.168.1.13")]
+    db.expire_all()
+    assert db.get(Device, devices["C"].id).static_ip == "192.168.1.17"
+
+    applied = client.post(f"/api/groups/{people}/compact", params={"dry_run": "false"}).json()
+    assert len(applied["moves"]) == 3
+    db.expire_all()
+    assert [db.get(Device, devices[n].id).static_ip for n in "DABC"] == [
+        "192.168.1.10", "192.168.1.11", "192.168.1.12", "192.168.1.13"]
+    assert db.scalars(select(Event).where(Event.type == "group.compacted")).one().payload["group"] == "People"
+
+    net = client.post(f"/api/groups/{network}/compact", params={"dry_run": "false"}).json()
+    assert net["pinned"] == [{"name": "GW", "ip": "192.168.1.1"}]
+    assert [(m["name"], m["to"]) for m in net["moves"]] == [("AP2", "192.168.1.2")]
