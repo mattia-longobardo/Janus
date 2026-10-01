@@ -22,7 +22,7 @@ def test_positions_round_trip(client, pair):
     assert body == {"updated": 1}
     body = client.get("/api/map").json()
     assert body["positions"] == [{"device_id": str(a.id), "x": 10.5, "y": -4.0}]
-    assert body["layout_version"] == 2
+    assert body["layout_version"] == 3
 
 
 def test_links(client, pair):
