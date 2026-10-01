@@ -41,3 +41,23 @@ def test_conflict_mismatch_private_and_test():
     assert private.title == "new changed its MAC"
     assert _render("notify.test", {"channel": "email"}, mac=None).title == "Janus test notification"
     assert _render("device.approved", {"device_id": "d", "ip": "192.168.1.10", "access": "lan_only"}, name="P").body == "192.168.1.10 · LAN only"
+
+
+def test_security_messages():
+    new_port = _render("security.new_port", {"device_id": "d", "port": 8080, "proto": "tcp", "service": "http",
+                                               "version": "nginx 1.24"}, name="PI")
+    assert (new_port.title, new_port.body, new_port.priority) == ("New open port on PI", "8080/tcp http nginx 1.24", 6)
+    risky = _render("security.risky_service", {"device_id": "d", "port": 23, "proto": "tcp", "service": "telnet",
+                                                 "reason": "Telnet sends passwords in clear text"}, name="CAM")
+    assert (risky.title, risky.body, risky.priority) == (
+        "Risky service on CAM", "23/tcp telnet: Telnet sends passwords in clear text", 8)
+
+
+def test_combined_risky_message():
+    message = _render("security.risky_service", {"device_id": "d", "risk": "high", "ports": [
+        {"port": 21, "proto": "tcp", "service": "ftp", "risk": "warning", "reason": "FTP sends passwords in clear text"},
+        {"port": 23, "proto": "tcp", "service": "telnet", "risk": "high", "reason": "Telnet sends passwords in clear text"},
+    ]}, name="CAM")
+    assert message.title == "Risky services on CAM"
+    assert message.body == ("21/tcp ftp: FTP sends passwords in clear text\n"
+                            "23/tcp telnet: Telnet sends passwords in clear text")

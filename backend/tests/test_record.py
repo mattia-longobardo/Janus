@@ -125,3 +125,25 @@ def test_ip_mismatch_repeats_only_daily_for_the_same_address(db, known):
     assert len(_events(db, "device.ip_mismatch")) == 2
     _record(db, KNOWN, "192.168.1.18", at=NOW + timedelta(hours=28))
     assert len(_events(db, "device.ip_mismatch")) == 3
+
+
+def test_mdns_hostname_does_not_replace_dhcp_hostname(db, known):
+    _record(db, KNOWN, "192.168.1.10", source="mdns", hostname="laptop-a-mdns")
+    assert known.dhcp_hostname == "laptop-a"
+
+
+def test_rich_sightings_are_thinned(db, known):
+    for minutes in (0, 1, 2):
+        _record(db, KNOWN, "192.168.1.10", source="mdns", at=NOW + timedelta(minutes=minutes), services=("_ssh._tcp",))
+    _record(db, KNOWN, "192.168.1.10", source="mdns", at=NOW + timedelta(minutes=3), services=("_smb._tcp",))
+    _record(db, KNOWN, "192.168.1.10", source="mdns", at=NOW + timedelta(hours=7), services=("_smb._tcp",))
+    assert db.scalar(select(func.count()).select_from(Sighting).where(Sighting.source == "mdns")) == 3
+
+
+def test_alternating_mdns_subsets_do_not_write_every_packet(db, known):
+    variants = [{"hostname": "laptop-a"}, {"services": ("_ssh._tcp",)}, {"model": "MacBookPro18,3"}]
+    for minute in range(12):
+        _record(db, KNOWN, "192.168.1.10", source="mdns", at=NOW + timedelta(minutes=minute), **variants[minute % 3])
+    assert db.scalar(select(func.count()).select_from(Sighting).where(Sighting.source == "mdns")) == 3
+    _record(db, KNOWN, "192.168.1.10", source="mdns", at=NOW + timedelta(minutes=13), services=("_ssh._tcp", "_smb._tcp"))
+    assert db.scalar(select(func.count()).select_from(Sighting).where(Sighting.source == "mdns")) == 4

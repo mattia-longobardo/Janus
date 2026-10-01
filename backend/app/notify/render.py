@@ -61,4 +61,15 @@ def render(event: Event, device_name: str | None, *, base_url: str, tz: ZoneInfo
         return Message(f"{service} unreachable", str(p.get("error", "")), priority, base_url)
     if kind == "infra.up":
         return Message(f"{service} reachable again", f"Down since {_local(p.get('down_since'), tz)}", priority, base_url)
+    if kind == "security.new_port":
+        detail = " ".join(part for part in (p.get("service"), p.get("version")) if part) or "unknown service"
+        return Message(f"New open port on {name}", f"{p.get('port')}/{p.get('proto')} {detail}", priority, url)
+    if kind == "security.risky_service" and p.get("ports"):
+        ports = p["ports"]
+        lines = [f"{item['port']}/{item['proto']} {item.get('service') or 'unknown'}: {item['reason']}" for item in ports]
+        title = f"Risky service on {name}" if len(ports) == 1 else f"Risky services on {name}"
+        return Message(title, "\n".join(lines), priority, url)
+    if kind == "security.risky_service":
+        return Message(f"Risky service on {name}",
+                       f"{p.get('port')}/{p.get('proto')} {p.get('service') or 'unknown'}: {p.get('reason')}", priority, url)
     return Message("Janus test notification", "If you can read this, the channel works.", priority, base_url)

@@ -12,6 +12,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.events import record_event
 from app.general import current_tz
+from app.intel.identity import identity_once
 from app.maintenance import Window, active_windows, load_windows
 from app.models import Setting
 from app.notify.channels import EmailChannel, GotifyChannel
@@ -130,6 +131,7 @@ def main() -> None:
             lease=settings.reservation_lease, apply=apply)),
         ("presence", settings.presence_interval_s, lambda: presence_once(SessionLocal)),
         ("dispatch", settings.dispatch_interval_s, lambda: dispatch_once(SessionLocal, senders, debouncer)),
+        ("identity", settings.identity_interval_s, lambda: identity_once(SessionLocal)),
     ]
     due = {name: 0.0 for name, _, _ in jobs}
     log.info("worker started (mode=%s)", settings.sync_mode)

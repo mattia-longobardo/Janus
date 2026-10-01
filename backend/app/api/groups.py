@@ -12,7 +12,8 @@ from app.net.ipplan import AssignmentError, IpRange, NetworkPlan, check_group_ra
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 GROUP_ACCESS = {Access.authorized, Access.lan_only}
-REQUIRED_GROUP_FIELDS = ("name", "color", "icon", "range_start", "range_end", "default_access")
+REQUIRED_GROUP_FIELDS = ("name", "color", "icon", "range_start", "range_end", "default_access", "scan_enabled",
+                         "scan_interval_hours")
 
 
 def plan() -> NetworkPlan:
@@ -27,6 +28,8 @@ class GroupIn(BaseModel):
     range_end: str
     default_access: Access = Access.authorized
     offline_alert_hours: int | None = Field(default=None, ge=1)
+    scan_enabled: bool = False
+    scan_interval_hours: int = Field(default=168, ge=1, le=720)
 
     @field_validator("default_access")
     @classmethod
@@ -44,6 +47,8 @@ class GroupPatch(BaseModel):
     range_end: str | None = None
     default_access: Access | None = None
     offline_alert_hours: int | None = Field(default=None, ge=1)
+    scan_enabled: bool | None = None
+    scan_interval_hours: int | None = Field(default=None, ge=1, le=720)
 
     @field_validator("default_access")
     @classmethod
@@ -70,6 +75,8 @@ class GroupOut(BaseModel):
     default_access: Access
     offline_alert_hours: int | None
     device_count: int
+    scan_enabled: bool
+    scan_interval_hours: int
 
 
 def _out(db: Session, group: Group) -> GroupOut:
@@ -78,6 +85,7 @@ def _out(db: Session, group: Group) -> GroupOut:
         id=group.id, name=group.name, color=group.color, icon=group.icon,
         range_start=group.range_start, range_end=group.range_end, default_access=group.default_access,
         offline_alert_hours=group.offline_alert_hours, device_count=count,
+        scan_enabled=group.scan_enabled, scan_interval_hours=group.scan_interval_hours,
     )
 
 
@@ -120,6 +128,7 @@ def create_group(body: GroupIn, db: Session = Depends(get_db)) -> GroupOut:
     group = Group(
         name=body.name, color=body.color, icon=body.icon, range_start=str(rng.start), range_end=str(rng.end),
         default_access=body.default_access, offline_alert_hours=body.offline_alert_hours,
+        scan_enabled=body.scan_enabled, scan_interval_hours=body.scan_interval_hours,
     )
     db.add(group)
     db.commit()

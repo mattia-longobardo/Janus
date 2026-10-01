@@ -85,3 +85,12 @@ def test_close_logs_out(respx_mock):
     with _client() as client:
         client.list_hosts()
     assert logout.called
+
+
+@respx.mock(base_url=BASE)
+def test_list_queries_filters_by_client_and_time(respx_mock):
+    respx_mock.post("/api/auth").respond(json=LOGIN_OK)
+    route = respx_mock.get("/api/queries").respond(json={"queries": [{"domain": "example.org"}], "recordsFiltered": 7})
+    assert _client().list_queries("192.168.1.40", 100, 200, length=50, disk=True) == ([{"domain": "example.org"}], 7)
+    params = dict(route.calls.last.request.url.params)
+    assert params == {"client_ip": "192.168.1.40", "from": "100", "until": "200", "length": "50", "disk": "true"}

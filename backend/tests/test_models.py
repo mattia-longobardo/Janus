@@ -2,7 +2,7 @@ from datetime import time
 
 from sqlalchemy import select
 
-from app.models import Access, Device, Event, Group, MaintenanceWindow, NotificationRule, Sighting
+from app.models import Access, Device, DeviceFact, Event, Group, MaintenanceWindow, NotificationRule, Service, Sighting
 
 
 def test_group_and_device_round_trip(db):
@@ -60,3 +60,28 @@ def test_sighting_window_and_rule_defaults(db):
     db.refresh(sighting)
     assert sighting.payload == {} and sighting.ts is not None
     assert db.scalar(select(NotificationRule)).enabled is True
+
+
+def test_group_scan_defaults_and_fact_service_rows(db):
+    from datetime import UTC, datetime
+
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+
+    group = Group(name="Servers", color="#F0765C", icon="server", range_start="192.168.1.220",
+                  range_end="192.168.1.229", default_access=Access.authorized)
+    db.add(group)
+    db.flush()
+    assert (group.scan_enabled, group.scan_interval_hours) == (False, 168)
+    now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    db.add_all([
+        DeviceFact(mac="00:00:5E:00:53:10", field="vendor", value="ICANN", source="oui", confidence=90, observed_at=now),
+        Service(mac="00:00:5E:00:53:10", port=22, proto="tcp", state="open", service="ssh", risk="none",
+                first_seen=now, last_seen=now),
+    ])
+    db.flush()
+    with pytest.raises(IntegrityError):
+        with db.begin_nested():
+            db.add(DeviceFact(mac="00:00:5E:00:53:10", field="vendor", value="x", source="oui", confidence=1,
+                              observed_at=now))
+            db.flush()

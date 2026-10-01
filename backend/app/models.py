@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, time
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, String, Time, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Time, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,6 +32,8 @@ class Group(Base):
     range_end: Mapped[str] = mapped_column(String(15))
     default_access: Mapped[Access] = mapped_column(ACCESS_TYPE)
     offline_alert_hours: Mapped[int | None] = mapped_column(Integer)
+    scan_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    scan_interval_hours: Mapped[int] = mapped_column(Integer, default=168)
 
     devices: Mapped[list["Device"]] = relationship(back_populates="group")
 
@@ -56,6 +58,8 @@ class Device(Base):
     dhcp_hostname: Mapped[str | None] = mapped_column(String(255))
     first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    scan_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     group: Mapped[Group | None] = relationship(back_populates="devices")
@@ -80,6 +84,7 @@ class Setting(Base):
 
 class Sighting(Base):
     __tablename__ = "sightings"
+    __table_args__ = (Index("ix_sightings_mac_source_ts", "mac", "source", "ts"),)
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     ts: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
@@ -108,3 +113,33 @@ class NotificationRule(Base):
     event_type: Mapped[str] = mapped_column(String(64), primary_key=True)
     channel: Mapped[str] = mapped_column(String(16), primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class DeviceFact(Base):
+    __tablename__ = "device_facts"
+    __table_args__ = (UniqueConstraint("mac", "field", "source", name="uq_device_facts_mac_field_source"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    mac: Mapped[str] = mapped_column(String(17), index=True)
+    field: Mapped[str] = mapped_column(String(32))
+    value: Mapped[str] = mapped_column(String(255))
+    source: Mapped[str] = mapped_column(String(16))
+    confidence: Mapped[int] = mapped_column(Integer)
+    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Service(Base):
+    __tablename__ = "services"
+    __table_args__ = (UniqueConstraint("mac", "port", "proto", name="uq_services_mac_port_proto"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    mac: Mapped[str] = mapped_column(String(17), index=True)
+    port: Mapped[int] = mapped_column(Integer)
+    proto: Mapped[str] = mapped_column(String(4))
+    state: Mapped[str] = mapped_column(String(8))
+    service: Mapped[str | None] = mapped_column(String(64))
+    version: Mapped[str | None] = mapped_column(String(255))
+    risk: Mapped[str] = mapped_column(String(16))
+    risk_reason: Mapped[str | None] = mapped_column(String(128))
+    first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     sweep_interval_s: int = 60
     sentinel_heartbeat_path: str = "/tmp/janus-sentinel.heartbeat"
     sighting_retention_days: int = 30
+    oui_path: str = "/usr/share/ieee-data/oui.csv"
+    identity_interval_s: int = 60
+    scan_poll_s: int = 30
+    scan_host_timeout_s: int = 180
+    scanner_heartbeat_path: str = "/tmp/janus-scanner.heartbeat"
+    scan_window_start: str = "08:00"
+    scan_window_end: str = "22:00"
 
 
 settings = Settings()

@@ -13,6 +13,8 @@ from app.sentinel.observe import Observation
 
 GATEWAY_KEY = "gateway.mac"
 SIGHTING_GAP = timedelta(minutes=10)
+RICH_GAP = timedelta(hours=6)
+RICH_SOURCES = {"mdns", "netbios", "ssdp"}
 CONFLICT_WINDOW = timedelta(minutes=2)
 REPEAT_GAP = timedelta(hours=1)
 MISMATCH_GAP = timedelta(hours=24)
@@ -49,13 +51,14 @@ def _new_device(db: Session, obs: Observation, plan: NetworkPlan, now: datetime)
 
     name = (obs.hostname or f"Unknown {obs.mac[-8:]}")[:64]
     device = Device(mac=obs.mac, name=name, hostname=hostname_for(name, taken), access=Access.pending,
-                    private_mac=private, first_seen=now, dhcp_hostname=obs.hostname)
+                    private_mac=private, first_seen=now,
+                    dhcp_hostname=obs.hostname if obs.source == "dhcp" else None)
     db.add(device)
     db.flush()
     record_event(db, "device.new", obs.mac, {
         "device_id": str(device.id), "ip": obs.ip, "hostname": obs.hostname, "private_mac": private, "source": obs.source,
     }, ts=now)
-    if private and obs.hostname:
+    if private and obs.hostname and obs.source == "dhcp":
         twin = db.scalar(select(Device).where(
             Device.dhcp_hostname == obs.hostname, Device.mac != obs.mac, Device.access.in_(APPROVED)
         ))
@@ -91,6 +94,28 @@ def _check_mismatch(db: Session, device: Device, ip: str, plan: NetworkPlan, now
     }, ts=now)
 
 
+def _needs_sighting(db: Session, obs: Observation, previous_ip: str | None, previous_seen: datetime | None,
+                    now: datetime) -> bool:
+    if obs.source == "dhcp":
+        return True
+    if obs.source in RICH_SOURCES:
+        recent = db.scalars(select(Sighting).where(
+            Sighting.mac == obs.mac, Sighting.source == obs.source, Sighting.ts > now - RICH_GAP
+        ).order_by(Sighting.ts.desc()).limit(50)).all()
+        if not recent or any(row.ip != obs.ip for row in recent[:1]):
+            return True
+        known: dict[str, set[str]] = {}
+        for row in recent:
+            for key, value in (row.payload or {}).items():
+                known.setdefault(key, set()).update(value if isinstance(value, list) else [value])
+        for key, value in obs.payload().items():
+            values = value if isinstance(value, list) else [value]
+            if not set(values) <= known.get(key, set()):
+                return True
+        return False
+    return bool(obs.ip and obs.ip != previous_ip) or previous_seen is None or now - previous_seen >= SIGHTING_GAP
+
+
 def record_observation(db: Session, obs: Observation, plan: NetworkPlan, now: datetime) -> Device:
     device = db.scalar(select(Device).where(Device.mac == obs.mac))
     if device is None:
@@ -99,14 +124,14 @@ def record_observation(db: Session, obs: Observation, plan: NetworkPlan, now: da
     else:
         previous_ip, previous_seen = device.last_ip, device.last_seen
 
-    if obs.source == "dhcp" or (obs.ip and obs.ip != previous_ip) or previous_seen is None or now - previous_seen >= SIGHTING_GAP:
+    if _needs_sighting(db, obs, previous_ip, previous_seen, now):
         db.add(Sighting(mac=obs.mac, ip=obs.ip, source=obs.source, payload=obs.payload(), ts=now))
 
     device.online = True
     device.last_seen = now
     if device.first_seen is None:
         device.first_seen = now
-    if obs.hostname:
+    if obs.hostname and obs.source == "dhcp":
         device.dhcp_hostname = obs.hostname
     if obs.ip:
         device.last_ip = obs.ip
