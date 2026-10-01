@@ -238,3 +238,29 @@ def test_gotify_uses_the_priority_override(db):
     emit(db, "ip.conflict", None, {"ip": "192.168.1.50", "macs": []})
     run()
     assert [priority for _, priority in senders["gotify"].sent] == [2, 8]
+
+
+def test_second_dispatcher_backs_off_while_the_first_holds_the_lock(db, engine):
+    from sqlalchemy import text
+
+    from app.notify.dispatcher import DISPATCH_LOCK
+
+    db.add_all([NotificationRule(**row) for row in default_rule_rows()])
+    save_notify_settings(db, NotifySettings(email_recipient="owner@example.org"))
+    db.flush()
+    senders = {"email": FakeSender(), "gotify": FakeSender()}
+
+    def run():
+        return dispatch_pending(db, senders, MemoryDebouncer(), now=NOON, tz=ROME, windows=[],
+                                base_url="b", quarantine_active=False)
+
+    with engine.connect() as other:
+        other.begin()
+        assert other.scalar(text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": DISPATCH_LOCK})
+        assert run() == 0
+        assert db.get(Setting, "notify.cursor") is None
+        other.rollback()
+    run()
+    emit(db, "device.new", "00:00:5E:00:53:40", {"ip": "192.168.1.243"})
+    assert run() == 1
+    assert len(senders["gotify"].sent) == 1

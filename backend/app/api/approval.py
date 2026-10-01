@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.api.conflicts import commit_or_409
 from app.api.devices import DeviceOut, get_device_or_404
 from app.api.groups import plan
 from app.approval import ApprovalError, approve_device, block_device
@@ -17,6 +18,7 @@ from app.net.ipplan import AssignmentError
 from app.netconfig import load_netconfig
 from app.pihole.client import PiholeClient, PiholeError, shared_session
 from app.pihole.sync import apply_sync
+from app.syncmode import load_sync_mode
 
 router = APIRouter(prefix="/api/devices", tags=["approval"])
 PiholeFactory = Callable[[], AbstractContextManager[PiholeClient]]
@@ -40,7 +42,7 @@ class ApprovalOut(BaseModel):
 
 
 def _enforce(db: Session, factory: PiholeFactory, revoke_ip: str | None) -> str:
-    if settings.sync_mode != "apply":
+    if load_sync_mode(db) != "apply":
         return "dry-run"
     try:
         with factory() as client:
@@ -72,7 +74,7 @@ def approve(device_id: uuid.UUID, body: ApproveIn, db: Session = Depends(get_db)
         approve_device(db, device, plan=plan(db), name=body.name, group=group, access=body.access, static_ip=body.static_ip)
     except (ApprovalError, AssignmentError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
-    db.commit()
+    commit_or_409(db, "another device already holds that address, MAC or name: reload and try again")
     enforcement = _enforce(db, factory, _quarantine_ip(db, device))
     return ApprovalOut(device=DeviceOut.model_validate(device), enforcement=enforcement)
 

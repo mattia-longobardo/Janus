@@ -11,6 +11,7 @@ from app.events import record_event
 from app.general import TIMEZONE_KEY, current_tz
 from app.models import Setting
 from app.netconfig import NetConfigError, load_netconfig, sources, update_netconfig
+from app.syncmode import load_sync_mode
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 TIME_FORMAT_KEY = "general.time_format"
@@ -47,7 +48,7 @@ def _view(db: Session) -> dict[str, Any]:
     return {
         "timezone": current_tz(db).key,
         "time_format": row.value if row is not None and row.value in ("24h", "12h") else "24h",
-        "sync_mode": settings.sync_mode,
+        "sync_mode": load_sync_mode(db),
         "network": {
             "subnet": cfg.subnet,
             "gateway": cfg.gateway,

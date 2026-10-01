@@ -86,6 +86,8 @@ def test_ip_conflict_detected_once_per_hour(db, known):
     _record(db, KNOWN, "192.168.1.10")
     _record(db, other, "192.168.1.10", at=NOW + timedelta(seconds=30))
     _record(db, other, "192.168.1.10", at=NOW + timedelta(seconds=60))
+    assert _events(db, "ip.conflict") == []
+    _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(seconds=90))
     [event] = _events(db, "ip.conflict")
     assert event.payload == {"ip": "192.168.1.10", "macs": [KNOWN, other]}
     later = NOW + timedelta(hours=2)
@@ -162,3 +164,13 @@ def test_link_local_and_boot_blips_never_raise_a_mismatch(db, known):
     _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(minutes=4))
     assert _events(db, "device.ip_mismatch") == []
     assert known.last_ip == "192.168.1.10"
+
+
+def test_dhcp_handover_is_not_a_conflict(db, known):
+    previous_holder = "00:00:5E:00:53:61"
+    _record(db, previous_holder, "192.168.1.10")
+    _record(db, KNOWN, "192.168.1.50", at=NOW - timedelta(minutes=5))
+    _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(seconds=20))
+    _record(db, KNOWN, "192.168.1.10", at=NOW + timedelta(seconds=80))
+    _record(db, previous_holder, "192.168.1.31", at=NOW + timedelta(seconds=100))
+    assert _events(db, "ip.conflict") == []

@@ -69,9 +69,15 @@ def _new_device(db: Session, obs: Observation, plan: NetworkPlan, now: datetime)
     return device
 
 
-def _check_conflict(db: Session, device: Device, ip: str, now: datetime) -> None:
+def _check_conflict(db: Session, device: Device, ip: str, previous_ip: str | None, previous_seen: datetime | None,
+                    now: datetime) -> None:
+    """A conflict needs both MACs to keep answering for the IP: this device was already on it, and the rival
+    has been seen there since. A device simply taking over an address (DHCP handover) is not a conflict."""
+    if previous_ip != ip or previous_seen is None:
+        return
     rival = db.scalar(select(Device).where(
-        Device.last_ip == ip, Device.id != device.id, Device.online.is_(True), Device.last_seen >= now - CONFLICT_WINDOW
+        Device.last_ip == ip, Device.id != device.id, Device.online.is_(True),
+        Device.last_seen >= now - CONFLICT_WINDOW, Device.last_seen > previous_seen,
     ))
     if rival is None or _recent(db, "ip.conflict", now - REPEAT_GAP, ip=ip):
         return
@@ -139,7 +145,7 @@ def record_observation(db: Session, obs: Observation, plan: NetworkPlan, now: da
     if obs.ip and address is not None and address in plan.subnet:
         device.last_ip = obs.ip
         db.flush()
-        _check_conflict(db, device, obs.ip, now)
+        _check_conflict(db, device, obs.ip, previous_ip, previous_seen, now)
         _check_mismatch(db, device, obs.ip, previous_ip, plan, now)
     db.flush()
     return device

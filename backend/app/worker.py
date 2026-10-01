@@ -14,6 +14,7 @@ from app.events import record_event
 from app.general import current_tz
 from app.intel.identity import identity_once
 from app.maintenance import Window, active_windows, load_windows
+from app.metrics import start_metrics_server
 from app.models import Setting
 from app.netconfig import load_netconfig, load_with
 from app.notify.channels import EmailChannel, GotifyChannel
@@ -23,6 +24,7 @@ from app.pihole.client import PiholeClient, PiholeError
 from app.pihole.reservations import HostDiff
 from app.pihole.sync import apply_sync, plan_sync
 from app.presence import evaluate_presence, purge_sightings
+from app.syncmode import load_sync_mode, load_sync_mode_with
 
 log = logging.getLogger("janus.worker")
 SessionFactory = Callable[[], AbstractContextManager[Session]]
@@ -50,9 +52,11 @@ def reconcile_once(
     client_factory: Callable[[], AbstractContextManager],
     *,
     lease: str,
-    apply: bool,
+    apply: bool | None = None,
 ) -> HostDiff | None:
     with session_factory() as db:
+        if apply is None:
+            apply = load_sync_mode(db) == "apply"
         try:
             with client_factory() as client:
                 diff = apply_sync(db, client, lease) if apply else plan_sync(db, client, lease)
@@ -106,7 +110,7 @@ def dispatch_once(
     with session_factory() as db:
         count = dispatch_pending(
             db, senders, debouncer, now=now or datetime.now(UTC), tz=current_tz(db), windows=load_windows(db),
-            base_url=settings.base_url, quarantine_active=settings.sync_mode == "apply",
+            base_url=settings.base_url, quarantine_active=load_sync_mode(db) == "apply",
         )
         db.commit()
         return count
@@ -123,19 +127,19 @@ def build_senders() -> dict[str, Sender]:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     heartbeat = Path(settings.heartbeat_path)
-    apply = settings.sync_mode == "apply"
     senders = build_senders()
     debouncer = RedisDebouncer(Redis.from_url(settings.redis_url))
     jobs: list[tuple[str, int, Callable[[], object]]] = [
         ("reconcile", settings.reconcile_interval_s, lambda: reconcile_once(
             SessionLocal, lambda: PiholeClient(load_with(SessionLocal).pihole_url, settings.pihole_password),
-            lease=settings.reservation_lease, apply=apply)),
+            lease=settings.reservation_lease)),
         ("presence", settings.presence_interval_s, lambda: presence_once(SessionLocal)),
         ("dispatch", settings.dispatch_interval_s, lambda: dispatch_once(SessionLocal, senders, debouncer)),
         ("identity", settings.identity_interval_s, lambda: identity_once(SessionLocal)),
     ]
     due = {name: 0.0 for name, _, _ in jobs}
-    log.info("worker started (mode=%s)", settings.sync_mode)
+    start_metrics_server(SessionLocal)
+    log.info("worker started (mode=%s)", load_sync_mode_with(SessionLocal))
     while True:
         for name, interval, job in jobs:
             if time.monotonic() >= due[name]:

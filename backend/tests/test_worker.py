@@ -63,7 +63,7 @@ def test_reconcile_line_rejection_is_not_an_outage(db):
 
 def test_reconcile_keeps_partial_log_when_pihole_drops(db):
     _seed(db)
-    stale = "00:00:5e:00:53:99,192.168.1.12,old,24h"
+    stale = "00:00:5e:00:53:10,192.168.1.12,laptop-a,24h"
     fake = FakePihole([stale], drop_after_writes=1)
     assert reconcile_once(lambda: nullcontext(db), lambda: fake, lease="24h", apply=True) is None
     assert _count(db, "infra.down") == 1

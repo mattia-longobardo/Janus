@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
@@ -19,12 +19,15 @@ class Window:
     pause_isolation: bool = True
 
     def occurrences(self, start: datetime, end: datetime, tz: ZoneInfo) -> list[tuple[datetime, datetime]]:
+        """Openings in UTC. The start is local wall-clock time; the duration is real elapsed time, so windows
+        across a DST change keep their length, and a start in the skipped spring hour opens once, an hour later."""
+        start, end = start.astimezone(UTC), end.astimezone(UTC)
         found = []
-        day = (start.astimezone(tz) - self.duration).date()
+        day = (start.astimezone(tz) - self.duration).date() - timedelta(days=1)
         last = end.astimezone(tz).date()
         while day <= last:
             if self.days & (1 << day.weekday()):
-                opens = datetime.combine(day, self.start, tzinfo=tz)
+                opens = datetime.combine(day, self.start, tzinfo=tz).astimezone(UTC)
                 closes = opens + self.duration
                 if opens < end and closes > start:
                     found.append((opens, closes))
@@ -41,6 +44,7 @@ def alerts_muted(windows: list[Window], at: datetime, tz: ZoneInfo) -> bool:
 
 
 def muted_seconds(windows: list[Window], start: datetime, end: datetime, tz: ZoneInfo) -> float:
+    start, end = start.astimezone(UTC), end.astimezone(UTC)
     spans = sorted(
         (max(opens, start), min(closes, end))
         for w in windows

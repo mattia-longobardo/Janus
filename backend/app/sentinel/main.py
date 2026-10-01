@@ -52,11 +52,17 @@ def flush(packets: Iterable[Any], plan: NetworkPlan, session_factory: SessionFac
     observations = list(dict.fromkeys(obs for obs in (_safe_observe(p) for p in packets) if obs is not None))
     if not observations:
         return 0
+    recorded = 0
     with session_factory() as db:
         for obs in observations:
-            record_observation(db, obs, plan, now)
+            try:
+                with db.begin_nested():
+                    record_observation(db, obs, plan, now)
+                recorded += 1
+            except Exception:
+                log.exception("could not record %s (%s); skipping it", obs.mac, obs.source)
         db.commit()
-    return len(observations)
+    return recorded
 
 
 def write_heartbeat(session_factory: SessionFactory, path: Path, now: datetime) -> None:

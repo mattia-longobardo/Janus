@@ -9,6 +9,8 @@ services:
     image: janus:latest
     container_name: janus
     user: "1000:1000"
+    cap_drop:
+      - NET_RAW
     command: api
     environment:
       - JANUS_DATABASE_URL=postgresql+psycopg://janus:${DB_JANUS_PASSWORD}@postgres:5432/janus
@@ -27,6 +29,8 @@ services:
       - AUTH_AUTHENTIK_ISSUER=https://${AUTHENTIK_HOST}/application/o/janus/
       - JANUS_ALLOWED_EMAILS=${JANUS_ALLOWED_EMAILS}
       - TZ=Europe/Rome
+    volumes:
+      - ./janus/backups:/app/backups
     restart: unless-stopped
     mem_limit: 1g
     cpus: "1.0"
@@ -60,6 +64,8 @@ services:
     image: janus:latest
     container_name: janus-worker
     user: "1000:1000"
+    cap_drop:
+      - NET_RAW
     depends_on:
       janus:
         condition: service_healthy
@@ -98,6 +104,7 @@ services:
     networks:
       - db_internal
       - mail_internal
+      - metrics_internal
 
 # Janus Sentinel # -------------------------------------------------------------------------------------------------------
 
@@ -137,6 +144,8 @@ services:
     image: janus:latest
     container_name: janus-scanner
     user: "1000:1000"
+    cap_drop:
+      - NET_RAW
     depends_on:
       janus:
         condition: service_healthy
@@ -169,4 +178,6 @@ networks:
   db_internal:
     external: true
   mail_internal:
+    external: true
+  metrics_internal:
     external: true

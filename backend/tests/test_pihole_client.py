@@ -134,3 +134,18 @@ def test_shared_session_renews_once_when_expired(respx_mock):
         assert client.list_leases() == []
     assert login.call_count == 1
     assert shared.sid == "new"
+
+
+@respx.mock(base_url=BASE)
+def test_non_json_or_unexpected_replies_raise_pihole_error(respx_mock):
+    respx_mock.post("/api/auth").respond(json=LOGIN_OK)
+    respx_mock.delete("/api/auth").respond(204)
+    respx_mock.get("/api/config/dhcp/hosts").respond(200, text="<html>maintenance</html>")
+    respx_mock.get("/api/dhcp/leases").respond(200, json={"unexpected": True})
+    with _client() as client:
+        with pytest.raises(PiholeError) as html:
+            client.list_hosts()
+        assert html.value.status == 200 and "not valid JSON" in str(html.value)
+        with pytest.raises(PiholeError) as shape:
+            client.list_leases()
+        assert "unexpected reply" in str(shape.value)

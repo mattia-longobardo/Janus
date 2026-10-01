@@ -120,3 +120,17 @@ def test_apply_sync_logs_partial_progress_before_transport_error(db):
         apply_sync(db, fake, "24h")
     applied = db.scalar(select(Event).where(Event.type == "sync.applied"))
     assert applied.payload == {"added": [], "removed": [stale]}
+
+
+def test_foreign_host_lines_are_reported_not_removed(db):
+    g = _group(db)
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.10")
+    _device(db, g, "BANNED", "00:00:5E:00:53:22", "192.168.1.13", Access.blocked)
+    foreign = "00:00:5e:00:53:99,192.168.1.200,someone-elses-nas,24h"
+    blocked = "00:00:5e:00:53:22,192.168.1.13,banned,24h"
+    fake = FakePihole(["00:00:5e:00:53:10,192.168.1.10,laptop-a,24h", foreign, blocked])
+    diff = plan_sync(db, fake, "24h")
+    assert diff.to_remove == [blocked]
+    assert diff.unmanaged == [foreign]
+    apply_sync(db, fake, "24h")
+    assert foreign in fake.hosts and blocked not in fake.hosts

@@ -20,6 +20,7 @@ from app.net.mac import is_private_mac, normalize_mac
 from app.net.names import hostname_for
 
 REQUIRED = ("Name", "MAC Address", "LAN IP", "Category")
+MAX_NAME = 64
 PALETTE = ["#6FB7FF", "#B69CF0", "#E58FB8", "#5CC8A8", "#7FD1C4", "#A6D86A", "#E0A84E", "#D9C27A", "#F0765C", "#9AA3A8"]
 
 
@@ -49,6 +50,9 @@ def _create_groups(db: Session, rows: list[dict[str, str]], plan: NetworkPlan, r
             by_category.setdefault(row["Category"].strip(), []).append(ip)
     for category, ips in sorted(by_category.items(), key=lambda kv: min(kv[1])):
         if not category or category in groups:
+            continue
+        if len(category) > MAX_NAME:
+            report.skipped.append(f"group {category!r}: name longer than {MAX_NAME} characters")
             continue
         rng = infer_group_range(plan, ips)
         try:
@@ -94,6 +98,9 @@ def import_csv(db: Session, text: str, plan: NetworkPlan) -> ImportReport:
         raw_mac = row["MAC Address"].strip()
         if not name:
             report.skipped.append(f"line {line_no}: empty name")
+            continue
+        if len(name) > MAX_NAME:
+            report.skipped.append(f"line {line_no} {name[:20]}…: name longer than {MAX_NAME} characters")
             continue
         group = groups.get(category)
         if group is None:

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.events import record_event
@@ -25,6 +25,7 @@ DEBOUNCE_S = 3600
 SETTLE = timedelta(seconds=30)
 DEFERRABLE = {"infra.down", "infra.up", "device.offline"}
 MAX_PENDING = 200
+DISPATCH_LOCK = 0x4A414E5553
 
 
 class Sender(Protocol):
@@ -79,6 +80,9 @@ def dispatch_pending(
     batch: int = 100,
     max_attempts: int = 5,
 ) -> int:
+    if not db.scalar(text("SELECT pg_try_advisory_xact_lock(:key)"), {"key": DISPATCH_LOCK}):
+        log.info("another dispatcher is running; skipping this round")
+        return 0
     cursor = db.get(Setting, CURSOR_KEY)
     if cursor is None:
         db.add(Setting(key=CURSOR_KEY, value=db.scalar(select(func.max(Event.id))) or 0))
