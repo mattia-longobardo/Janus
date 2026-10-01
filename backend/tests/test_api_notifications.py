@@ -14,7 +14,8 @@ def test_get_returns_settings_and_rules(client, db):
     body = client.get("/api/notifications").json()
     assert body["settings"]["quiet_start"] == "23:00" and body["settings"]["enabled"] is True
     new = next(r for r in body["rules"] if r["event_type"] == "device.new")
-    assert new == {"event_type": "device.new", "label": "New device waiting for approval", "email": True, "gotify": True}
+    assert new == {"event_type": "device.new", "label": "New device waiting for approval", "email": True, "gotify": True,
+                   "priority": 8, "default_priority": 8}
     assert all(r["event_type"] != "notify.test" for r in body["rules"])
 
 
@@ -47,3 +48,30 @@ def test_test_notification_is_queued(client, db):
     event = db.scalar(select(Event).where(Event.type == "notify.test"))
     assert event.payload == {"channel": "gotify"}
     assert client.post("/api/notifications/test/sms").status_code == 404
+
+
+def _rule(client, kind):
+    return next(r for r in client.get("/api/notifications").json()["rules"] if r["event_type"] == kind)
+
+
+def test_put_rules_sets_and_resets_gotify_priority(client, db):
+    _seed(db)
+    response = client.put("/api/notifications/rules",
+                          json=[{"event_type": "device.offline", "email": False, "gotify": True, "priority": 9}])
+    assert response.status_code == 200
+    offline = _rule(client, "device.offline")
+    assert (offline["priority"], offline["default_priority"]) == (9, 5)
+    client.put("/api/notifications/rules", json=[{"event_type": "device.offline", "email": False, "gotify": True}])
+    assert _rule(client, "device.offline")["priority"] == 9
+    client.put("/api/notifications/rules",
+               json=[{"event_type": "device.offline", "email": False, "gotify": True, "priority": None}])
+    assert _rule(client, "device.offline")["priority"] == 5
+
+
+def test_put_rules_rejects_out_of_range_priority(client, db):
+    _seed(db)
+    for bad in (-1, 11, "high"):
+        response = client.put("/api/notifications/rules",
+                              json=[{"event_type": "device.offline", "email": False, "gotify": True, "priority": bad}])
+        assert response.status_code == 422
+    assert _rule(client, "device.offline")["priority"] == 5

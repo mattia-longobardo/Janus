@@ -4,6 +4,7 @@ import "@xyflow/react/dist/style.css";
 
 import {
   Background,
+  ConnectionMode,
   BackgroundVariant,
   type Connection,
   type Edge,
@@ -20,6 +21,7 @@ import {
 import clsx from "clsx";
 import { toPng } from "html-to-image";
 import { Maximize, Minus, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useResolvedTheme } from "@/components/theme-toggle";
@@ -65,11 +67,11 @@ function DeviceNode({ data }: NodeProps<Node<DeviceData>>) {
   const Icon = data.gateway ? GatewayIcon : look.Icon;
   return (
     <div
-      className={clsx("flex items-center gap-[9px] overflow-hidden rounded-lg bg-card pl-2 pr-2.5", !d.online && !pending && "opacity-55")}
+      className={clsx("group relative flex items-center gap-[9px] rounded-lg bg-card pl-2 pr-2.5", !d.online && !pending && "opacity-55")}
       style={{ width: data.w, height: data.h, border: pending ? "1.5px dashed var(--accent)" : `1px solid ${color}66` }}
       title={`${d.name} · ${deviceIp(d) ?? "no IP"}`}
     >
-      <Handle type="target" position={Position.Top} className="!size-2 !border-line2 !bg-card !opacity-0 hover:!opacity-100" />
+      <Handle type="target" position={Position.Top} className="!size-3 !border-[1.5px] !border-accent !bg-card !opacity-0 group-hover:!opacity-100" />
       <Tile color={color}>
         <Icon className="size-3.5" strokeWidth={1.8} />
       </Tile>
@@ -78,7 +80,7 @@ function DeviceNode({ data }: NodeProps<Node<DeviceData>>) {
         {data.showIp && <span className="truncate font-mono text-[10.5px] leading-tight text-faint">{deviceIp(d) ?? "—"}</span>}
       </span>
       <span className={clsx("size-2 shrink-0 rounded-full", pending ? "bg-accent" : d.online ? "bg-ok" : "bg-off")} />
-      <Handle type="source" position={Position.Bottom} className="!size-2 !border-line2 !bg-card !opacity-0 hover:!opacity-100" />
+      <Handle type="source" position={Position.Bottom} className="!size-3 !border-[1.5px] !border-accent !bg-card !opacity-0 group-hover:!opacity-100" />
     </div>
   );
 }
@@ -152,10 +154,11 @@ function lastOctets(group: Group): string {
 
 function MapCanvas() {
   const flow = useReactFlow();
+  const router = useRouter();
   const theme = useResolvedTheme();
   const { settings } = useSettings();
   const gatewayIp = settings.network.gateway;
-  const devicesRes = useResource<Device[]>("/devices", { refreshMs: 60_000 });
+  const devicesRes = useResource<Device[]>("/devices", { refreshMs: 15_000 });
   const groupsRes = useResource<Group[]>("/groups");
   const mapRes = useResource<MapData>("/map");
   const [positions, setPositions] = useState<Record<string, Point>>({});
@@ -325,6 +328,12 @@ function MapCanvas() {
     [mapRes],
   );
 
+  async function openDevice(node: Node) {
+    if (!positions[node.id]) return;
+    if (dirty) await save();
+    router.push(`/devices/${node.id}?from=map`);
+  }
+
   function arrange() {
     setPositions(autoLayout(devices, groups, gatewayIp));
     setDirty(true);
@@ -388,6 +397,11 @@ function MapCanvas() {
           onNodesChange={onNodesChange}
           onConnect={onConnect}
           onEdgeClick={onEdgeClick}
+          onNodeDoubleClick={(_, node) => void openDevice(node)}
+          zoomOnDoubleClick={false}
+          connectionMode={ConnectionMode.Loose}
+          connectionRadius={60}
+          connectionLineStyle={{ stroke: linkKind === "wifi" ? "var(--ok)" : "var(--accent)", strokeWidth: 1.5, strokeDasharray: linkKind === "wifi" ? "5 4" : undefined }}
           colorMode={theme}
           fitView
           fitViewOptions={FIT}

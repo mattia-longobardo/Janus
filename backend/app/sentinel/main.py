@@ -13,6 +13,7 @@ from app.config import settings
 from app.db import SessionLocal
 from app.models import Setting
 from app.net.ipplan import NetworkPlan
+from app.netconfig import load_with, restart_needed
 from app.sentinel.observe import observe
 from app.sentinel.record import record_observation
 
@@ -77,13 +78,14 @@ def main() -> None:
     from scapy.sendrecv import AsyncSniffer
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-    plan = NetworkPlan.from_settings(settings)
+    cfg = load_with(SessionLocal)
+    plan = cfg.plan()
     heartbeat = Path(settings.sentinel_heartbeat_path)
     packets: queue.Queue[Any] = queue.Queue(maxsize=MAX_QUEUE)
     enqueue = Enqueuer(packets)
-    sniffer = AsyncSniffer(iface=settings.sentinel_interface, filter=FILTER, prn=enqueue, store=False)
+    sniffer = AsyncSniffer(iface=cfg.sentinel_interface, filter=FILTER, prn=enqueue, store=False)
     sniffer.start()
-    log.info("sentinel started on %s (%s)", settings.sentinel_interface, settings.subnet)
+    log.info("sentinel started on %s (%s)", cfg.sentinel_interface, cfg.subnet)
     next_sweep = 0.0
     reported_drops = 0
     while True:
@@ -96,11 +98,20 @@ def main() -> None:
         batch: list[Any] = []
         if time.monotonic() >= next_sweep:
             try:
-                batch.extend(sweep(settings.sentinel_interface, settings.subnet))
+                batch.extend(sweep(cfg.sentinel_interface, cfg.subnet))
                 write_heartbeat(SessionLocal, heartbeat, datetime.now(UTC))
             except Exception:
                 log.exception("ARP sweep failed")
-            next_sweep = time.monotonic() + settings.sweep_interval_s
+            next_sweep = time.monotonic() + cfg.sweep_interval_s
+            try:
+                changed = restart_needed(cfg, load_with(SessionLocal))
+            except Exception:
+                log.exception("reading the network settings failed")
+                changed = []
+            if changed:
+                log.info("network settings changed (%s); exiting so the container restarts", ", ".join(changed))
+                sniffer.stop()
+                raise SystemExit(0)
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:
             try:

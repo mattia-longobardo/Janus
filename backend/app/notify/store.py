@@ -9,6 +9,8 @@ from app.models import NotificationRule, Setting
 from app.notify.catalog import CATALOG
 
 SETTINGS_KEY = "notify.settings"
+PRIORITIES_KEY = "notify.priorities"
+MIN_PRIORITY, MAX_PRIORITY = 0, 10
 
 
 @dataclass
@@ -49,3 +51,23 @@ def default_rule_rows() -> list[dict[str, Any]]:
         rows.append({"event_type": event_type, "channel": "email", "enabled": spec.email})
         rows.append({"event_type": event_type, "channel": "gotify", "enabled": spec.gotify})
     return rows
+
+
+def load_priorities(db: Session) -> dict[str, int]:
+    row = db.get(Setting, PRIORITIES_KEY)
+    stored = row.value if row is not None and isinstance(row.value, dict) else {}
+    return {
+        kind: value
+        for kind, value in stored.items()
+        if kind in CATALOG and isinstance(value, int) and not isinstance(value, bool)
+        and MIN_PRIORITY <= value <= MAX_PRIORITY
+    }
+
+
+def save_priorities(db: Session, priorities: dict[str, int]) -> None:
+    db.merge(Setting(key=PRIORITIES_KEY, value=dict(sorted(priorities.items()))))
+    db.flush()
+
+
+def effective_priority(event_type: str, overrides: dict[str, int]) -> int:
+    return overrides.get(event_type, CATALOG[event_type].priority)

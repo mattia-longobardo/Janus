@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 
 export function InfoCard({ title, children, footer, className }: { title: string; children: ReactNode; footer?: ReactNode; className?: string }) {
   return (
-    <section className={clsx("rounded-[14px] border border-line bg-card px-6 py-5", className)}>
+    <section className={clsx("flex flex-col rounded-[14px] border border-line bg-card px-6 py-5", className)}>
       <h2 className="mb-1.5 font-display text-[19px] font-bold">{title}</h2>
       {children}
-      {footer && <p className="mt-3 text-xs text-faint">{footer}</p>}
+      {footer && <p className="mt-auto pt-3 text-xs text-faint">{footer}</p>}
     </section>
   );
 }

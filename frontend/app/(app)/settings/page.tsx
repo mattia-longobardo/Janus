@@ -4,21 +4,33 @@ import clsx from "clsx";
 import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { type NetDraft, errorField, networkPatch, toDraft } from "@/components/settings-network";
 import { REPEATS, nextRun, zoneLabel } from "@/components/settings-schedule";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button, Card, Checkbox, Field, Notice, PageHeader, inputClass } from "@/components/ui";
-import { api, errorText } from "@/lib/api";
+import { ApiError, api, errorText } from "@/lib/api";
 import { DAY_NAMES, describeDays, hasDay, toggleDay } from "@/lib/days";
 import { useSettings } from "@/lib/settings-context";
-import type { AppSettings, MaintenanceWindow } from "@/lib/types";
+import type { AppSettings, MaintenanceWindow, NetworkField } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
 const DURATIONS = [5, 10, 15, 30, 45, 60, 90, 120];
+const NET_LAYOUT: { field: NetworkField; label: string; type?: "text" | "time" | "number"; suffix?: string; wide?: boolean }[] = [
+  { field: "subnet", label: "Subnet" },
+  { field: "gateway", label: "Gateway" },
+  { field: "sentinel_interface", label: "Interface" },
+  { field: "sweep_interval_s", label: "ARP sweep every", type: "number", suffix: "s" },
+  { field: "pihole_url", label: "Pi-hole API", wide: true },
+  { field: "quarantine_start", label: "Quarantine from" },
+  { field: "quarantine_end", label: "Quarantine to" },
+  { field: "scan_window_start", label: "Port scans from", type: "time" },
+  { field: "scan_window_end", label: "Port scans until", type: "time" },
+];
 type General = Pick<AppSettings, "timezone" | "time_format">;
 
 function SectionCard({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <Card className="flex flex-col gap-[18px] px-6 py-[22px]">
+    <Card className="flex h-full flex-col gap-[18px] px-6 py-[22px]">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-display text-[19px] font-bold">{title}</h2>
         {action}
@@ -28,11 +40,68 @@ function SectionCard({ title, action, children }: { title: string; action?: Reac
   );
 }
 
-function ReadOnly({ label, value }: { label: string; value: string }) {
+function NetInput({
+  field,
+  label,
+  draft,
+  onChange,
+  source,
+  reset,
+  onReset,
+  error,
+  type = "text",
+  suffix,
+}: {
+  field: NetworkField;
+  label: string;
+  draft: NetDraft;
+  onChange: (field: NetworkField, value: string) => void;
+  source: "env" | "custom";
+  reset: boolean;
+  onReset: (field: NetworkField) => void;
+  error?: string;
+  type?: "text" | "time" | "number";
+  suffix?: string;
+}) {
+  const id = `net-${field}`;
   return (
-    <Field label={label}>
-      <input className={`${inputClass} font-mono text-text2`} value={value} readOnly />
-    </Field>
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <label htmlFor={id} className="text-[13px] font-medium text-text2">
+          {label}
+        </label>
+        {reset ? (
+          <span className="text-[11px] text-accent-text">default on save</span>
+        ) : source === "custom" ? (
+          <button type="button" onClick={() => onReset(field)} className="text-[11px] text-ok hover:underline">
+            Reset
+          </button>
+        ) : (
+          <span className="text-[11px] text-faint">default</span>
+        )}
+      </div>
+      <div className="relative">
+        <input
+          id={id}
+          type={type}
+          min={type === "number" ? 10 : undefined}
+          max={type === "number" ? 3600 : undefined}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={clsx(`${inputClass} font-mono`, suffix && "pr-8", error && "border-bad", reset && "text-faint")}
+          value={draft[field]}
+          disabled={reset}
+          spellCheck={false}
+          onChange={(e) => onChange(field, e.target.value)}
+        />
+        {suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-sm text-faint">{suffix}</span>}
+      </div>
+      {error && (
+        <span id={`${id}-error`} role="alert" className="text-xs text-bad">
+          {error}
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -42,6 +111,9 @@ export default function SettingsPage() {
   const [general, setGeneral] = useState<General>({ timezone: settings.timezone, time_format: settings.time_format });
   const [drafts, setDrafts] = useState<Record<number, MaintenanceWindow>>({});
   const [busy, setBusy] = useState(false);
+  const [net, setNet] = useState<NetDraft>(() => toDraft(settings));
+  const [resets, setResets] = useState<Set<NetworkField>>(new Set());
+  const [netError, setNetError] = useState<{ field: NetworkField; text: string }>();
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string }>();
   const zones = useMemo(() => {
     const list = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
@@ -51,6 +123,10 @@ export default function SettingsPage() {
   }, [settings.timezone]);
 
   useEffect(() => setGeneral({ timezone: settings.timezone, time_format: settings.time_format }), [settings.timezone, settings.time_format]);
+  useEffect(() => {
+    setNet(toDraft(settings));
+    setResets(new Set());
+  }, [settings]);
 
   const windows = (windowsRes.data ?? []).map((w) => drafts[w.id] ?? w);
   const dirtyWindows = windows.filter((w) => {
@@ -58,7 +134,9 @@ export default function SettingsPage() {
     return original && JSON.stringify(original) !== JSON.stringify(w);
   });
   const generalDirty = general.timezone !== settings.timezone || general.time_format !== settings.time_format;
-  const dirty = generalDirty || dirtyWindows.length > 0;
+  const patch = networkPatch(net, settings, resets);
+  const networkDirty = Object.keys(patch).length > 0;
+  const dirty = generalDirty || networkDirty || dirtyWindows.length > 0;
 
   useEffect(() => {
     if (!dirty) return;
@@ -70,7 +148,10 @@ export default function SettingsPage() {
   async function save() {
     setBusy(true);
     try {
-      if (generalDirty) await api.put("/settings", general);
+      setNetError(undefined);
+      if (generalDirty || networkDirty) {
+        await api.put("/settings", { ...(generalDirty ? general : {}), ...(networkDirty ? { network: patch } : {}) });
+      }
       for (const w of dirtyWindows) {
         const { id, ...body } = w;
         await api.patch(`/maintenance-windows/${id}`, body);
@@ -79,7 +160,13 @@ export default function SettingsPage() {
       await Promise.all([reload(), windowsRes.reload()]);
       setNotice({ tone: "success", text: "Settings saved." });
     } catch (err) {
-      setNotice({ tone: "error", text: errorText(err) });
+      const field = err instanceof ApiError && err.status === 422 ? errorField(err.message) : null;
+      if (field) {
+        setNetError({ field, text: err instanceof Error ? err.message.replace(/^[a-z_]+:\s*/, "") : "" });
+        setNotice({ tone: "error", text: "Network settings not saved — check the highlighted field." });
+      } else {
+        setNotice({ tone: "error", text: errorText(err) });
+      }
     } finally {
       setBusy(false);
     }
@@ -105,6 +192,16 @@ export default function SettingsPage() {
     }
   }
 
+  function changeNet(field: NetworkField, value: string) {
+    setNet((d) => ({ ...d, [field]: value }));
+    if (netError?.field === field) setNetError(undefined);
+  }
+
+  function resetNet(field: NetworkField) {
+    setResets((r) => new Set(r).add(field));
+    if (netError?.field === field) setNetError(undefined);
+  }
+
   const applying = settings.sync_mode === "apply";
   const q = settings.network;
 
@@ -120,8 +217,8 @@ export default function SettingsPage() {
         }
       />
       {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
-      <div className="grid items-start gap-5 xl:grid-cols-2">
-        <div className="flex flex-col gap-5">
+      <div className="grid gap-5 xl:grid-cols-2">
+        <div className="min-w-0">
           <SectionCard title="General">
             <Field label="Timezone" hint="Used for schedules, quiet hours, maintenance windows and every timestamp">
               <select className={inputClass} value={general.timezone} onChange={(e) => setGeneral((g) => ({ ...g, timezone: e.target.value }))}>
@@ -150,6 +247,33 @@ export default function SettingsPage() {
               <span className="text-xs text-faint">Applies right away on this browser.</span>
             </div>
           </SectionCard>
+        </div>
+        <div className="min-w-0">
+          <SectionCard title="Network">
+            <div className="grid gap-3.5 sm:grid-cols-2">
+              {NET_LAYOUT.map(({ field, label, type, suffix, wide }) => (
+                <div key={field} className={wide ? "sm:col-span-2" : undefined}>
+                  <NetInput
+                    field={field}
+                    label={label}
+                    type={type}
+                    suffix={suffix}
+                    draft={net}
+                    onChange={changeNet}
+                    source={settings.source?.[field] ?? "env"}
+                    reset={resets.has(field)}
+                    onReset={resetNet}
+                    error={netError?.field === field ? netError.text : undefined}
+                  />
+                </div>
+              ))}
+            </div>
+            <span className="mt-auto text-xs text-faint">
+              Changing interface, subnet or sweep interval restarts the scanner (a few seconds). The Pi-hole password stays in the server configuration.
+            </span>
+          </SectionCard>
+        </div>
+        <div className="min-w-0">
           <SectionCard
             title="Maintenance windows"
             action={
@@ -171,18 +295,7 @@ export default function SettingsPage() {
             ))}
           </SectionCard>
         </div>
-        <div className="flex flex-col gap-5">
-          <SectionCard title="Network">
-            <div className="grid gap-3.5 sm:grid-cols-2">
-              <ReadOnly label="Subnet" value={q.subnet} />
-              <ReadOnly label="Interface" value={q.sentinel_interface} />
-              <ReadOnly label="Gateway" value={q.gateway} />
-              <ReadOnly label="Pi-hole API" value={q.pihole_url} />
-              <ReadOnly label="Scan interval" value={`${q.sweep_interval_s} s`} />
-              <ReadOnly label="Port scans" value={`${settings.scan_window.start}–${settings.scan_window.end}`} />
-            </div>
-            <span className="text-xs text-faint">Set in the server configuration (.env).</span>
-          </SectionCard>
+        <div className="min-w-0">
           <SectionCard title="Access control">
             <div className="flex flex-col">
               <StatusRow

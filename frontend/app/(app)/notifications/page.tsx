@@ -51,7 +51,8 @@ export default function NotificationsPage() {
 
   async function changeRule(rule: Rule) {
     try {
-      await api.put("/notifications/rules", [{ event_type: rule.event_type, email: rule.email, gotify: rule.gotify }]);
+      const priority = rule.priority === rule.default_priority ? null : rule.priority;
+      await api.put("/notifications/rules", [{ event_type: rule.event_type, email: rule.email, gotify: rule.gotify, priority }]);
       await res.reload();
     } catch (err) {
       setNotice({ tone: "error", text: errorText(err) });
@@ -108,14 +109,9 @@ export default function NotificationsPage() {
             </span>
             <Checkbox aria-label="Enable Gotify" checked={draft.gotify_enabled} onChange={(e) => toggle("gotify_enabled", e.target.checked)} />
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Server">
-              <input className={`${inputClass} font-mono text-text2`} value={app.channels.gotify_url || "not configured"} readOnly />
-            </Field>
-            <Field label="Priority">
-              <input className={`${inputClass} text-text2`} value="By event (new device 8, info 4)" readOnly />
-            </Field>
-          </div>
+          <Field label="Server" hint="Priority: set per event below (0 silent · 4 normal · 8 high · 10 max).">
+            <input className={`${inputClass} font-mono text-text2`} value={app.channels.gotify_url || "not configured"} readOnly />
+          </Field>
           <div className="flex justify-end">
             <Button onClick={() => void test("gotify")}>Send test</Button>
           </div>

@@ -10,7 +10,7 @@ from app.models import Access, Device, Event, NotificationRule, Setting
 from app.notify.channels import NotifyError
 from app.notify.debounce import MemoryDebouncer
 from app.notify.dispatcher import dispatch_pending
-from app.notify.store import NotifySettings, default_rule_rows, save_notify_settings
+from app.notify.store import NotifySettings, default_rule_rows, save_notify_settings, save_priorities
 
 ROME = ZoneInfo("Europe/Rome")
 NOON = datetime(2026, 10, 1, 12, 0, tzinfo=ROME)
@@ -214,3 +214,27 @@ def test_test_event_bypasses_debounce_and_switches(db, env):
     run()
     assert senders["email"].sent == ["Janus test notification", "Janus test notification"]
     assert senders["gotify"].sent == []
+
+
+def test_gotify_uses_the_priority_override(db):
+    db.add_all([NotificationRule(**row) for row in default_rule_rows()])
+    save_notify_settings(db, NotifySettings(email_recipient="owner@example.org"))
+    save_priorities(db, {"device.new": 2})
+    db.flush()
+
+    class PrioritySender(FakeSender):
+        def send(self, message, ns):
+            self.sent.append((message.title, message.priority))
+
+    senders = {"email": FakeSender(), "gotify": PrioritySender()}
+    debouncer = MemoryDebouncer()
+
+    def run():
+        return dispatch_pending(db, senders, debouncer, now=NOON, tz=ROME, windows=[],
+                                base_url="https://janus.example", quarantine_active=False)
+
+    run()
+    emit(db, "device.new", "00:00:5E:00:53:20", {"ip": "192.168.1.243"})
+    emit(db, "ip.conflict", None, {"ip": "192.168.1.50", "macs": []})
+    run()
+    assert [priority for _, priority in senders["gotify"].sent] == [2, 8]

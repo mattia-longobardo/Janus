@@ -13,7 +13,13 @@ const HINTS: Record<string, string> = {
   "security.new_port": "Found by the scheduled port scan",
 };
 
-const GRID = "grid grid-cols-[1fr_72px_72px] items-center gap-3 sm:grid-cols-[1fr_90px_90px]";
+const GRID = "grid grid-cols-[1fr_52px_52px_112px] items-center gap-2 sm:grid-cols-[1fr_90px_90px_150px] sm:gap-3";
+const PRIORITIES = Array.from({ length: 11 }, (_, n) => n);
+
+export function priorityLabel(priority: number): string {
+  const name = priority === 0 ? "silent" : priority <= 3 ? "low" : priority <= 7 ? "normal" : priority <= 9 ? "high" : "max";
+  return `${priority} · ${name}`;
+}
 const HEAD = "text-center text-xs font-medium uppercase tracking-[.06em] text-faint";
 
 export function RulesTable({ rules, onChange }: { rules: Rule[]; onChange: (rule: Rule) => void }) {
@@ -23,6 +29,7 @@ export function RulesTable({ rules, onChange }: { rules: Rule[]; onChange: (rule
         <h2 className="font-display text-[19px] font-bold">Events</h2>
         <span className={HEAD}>Email</span>
         <span className={HEAD}>Gotify</span>
+        <span className={HEAD}>Priority</span>
       </div>
       {rules.map((rule) => (
         <div key={rule.event_type} className={`${GRID} border-b border-row py-3 last:border-0`}>
@@ -39,6 +46,27 @@ export function RulesTable({ rules, onChange }: { rules: Rule[]; onChange: (rule
               />
             </span>
           ))}
+          <span className="flex flex-col items-stretch gap-0.5">
+            <select
+              aria-label={`${rule.label} Gotify priority`}
+              value={rule.priority}
+              disabled={!rule.gotify}
+              onChange={(e) => onChange({ ...rule, priority: Number(e.target.value) })}
+              className={`h-9 rounded-md border bg-bg px-2 font-mono text-[12.5px] text-text disabled:opacity-40 ${
+                rule.priority !== rule.default_priority ? "border-accent" : "border-line2"
+              }`}
+            >
+              {PRIORITIES.map((n) => (
+                <option key={n} value={n}>
+                  {priorityLabel(n)}
+                  {n === rule.default_priority ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+            {rule.priority !== rule.default_priority && rule.gotify && (
+              <span className="text-center text-[11px] text-accent-text">custom · default {rule.default_priority}</span>
+            )}
+          </span>
         </div>
       ))}
     </div>

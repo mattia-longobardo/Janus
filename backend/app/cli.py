@@ -7,7 +7,7 @@ from pathlib import Path
 from app.config import settings
 from app.db import SessionLocal
 from app.importer import import_csv
-from app.net.ipplan import NetworkPlan
+from app.netconfig import load_netconfig
 from app.pihole.client import PiholeClient, PiholeError
 from app.pihole.sync import apply_sync, plan_sync
 
@@ -24,7 +24,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with SessionLocal() as db:
         if args.command == "import-csv":
-            report = import_csv(db, args.path.read_text(encoding="utf-8-sig"), NetworkPlan.from_settings(settings))
+            report = import_csv(db, args.path.read_text(encoding="utf-8-sig"), load_netconfig(db).plan())
             print(json.dumps(asdict(report), indent=2))
             if args.dry_run:
                 db.rollback()
@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
                 db.commit()
             return 0
         try:
-            with PiholeClient(settings.pihole_url, settings.pihole_password) as client:
+            with PiholeClient(load_netconfig(db).pihole_url, settings.pihole_password) as client:
                 diff = apply_sync(db, client, settings.reservation_lease) if args.apply else plan_sync(
                     db, client, settings.reservation_lease)
         except PiholeError as exc:

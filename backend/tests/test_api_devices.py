@@ -125,3 +125,20 @@ def test_delete_device_forgets_it_and_logs(client, seeded, db):
     assert event.mac == "00:00:5E:00:53:10"
     assert event.payload == {"name": "LAPTOP_A", "ip": "192.168.1.10", "group": "People"}
     assert client.delete(f"/api/devices/{laptop.id}").status_code == 404
+
+
+def test_export_devices_as_excel(client, seeded):
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    response = client.get("/api/devices/export.xlsx", params={"group_id": seeded["people"].id})
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/vnd.openxmlformats")
+    assert 'filename="janus-devices-' in response.headers["content-disposition"]
+    sheet = load_workbook(BytesIO(response.content)).active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0][:5] == ("Name", "Status", "Group", "Access", "Static IP")
+    assert [r[0] for r in rows[1:]] == ["LAPTOP_A", "PHONE_A"]
+    assert rows[2][6:8] == ("02:00:5E:00:53:11", "Yes")
+    assert sheet.freeze_panes == "A2"

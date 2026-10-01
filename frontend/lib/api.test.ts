@@ -38,3 +38,20 @@ describe("api", () => {
     expect(errorText("plain")).toBe("plain");
   });
 });
+
+describe("change notifications", () => {
+  it("announces successful writes but not reads or failures", async () => {
+    const seen = vi.fn();
+    window.addEventListener("janus:changed", seen);
+    mockFetch(200, {});
+    await api.get("/devices");
+    expect(seen).not.toHaveBeenCalled();
+    mockFetch(200, { ok: true });
+    await api.post("/devices/1/approve", {});
+    expect(seen).toHaveBeenCalledTimes(1);
+    mockFetch(409, { detail: "conflict" });
+    await expect(api.post("/map/links", {})).rejects.toThrow();
+    expect(seen).toHaveBeenCalledTimes(1);
+    window.removeEventListener("janus:changed", seen);
+  });
+});

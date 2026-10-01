@@ -5,10 +5,10 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import settings
 from app.db import get_db
 from app.models import Access, Device, Group
 from app.net.ipplan import AssignmentError, IpRange, NetworkPlan, check_group_range, next_free
+from app.netconfig import load_netconfig
 
 router = APIRouter(prefix="/api/groups", tags=["groups"])
 GROUP_ACCESS = {Access.authorized, Access.lan_only}
@@ -16,8 +16,8 @@ REQUIRED_GROUP_FIELDS = ("name", "color", "icon", "range_start", "range_end", "d
                          "scan_interval_hours")
 
 
-def plan() -> NetworkPlan:
-    return NetworkPlan.from_settings(settings)
+def plan(db: Session) -> NetworkPlan:
+    return load_netconfig(db).plan()
 
 
 class GroupIn(BaseModel):
@@ -96,7 +96,7 @@ def _validated_range(db: Session, start: str, end: str, exclude_id: int | None) 
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     others = [g.ip_range() for g in db.scalars(select(Group)) if g.id != exclude_id]
     try:
-        check_group_range(plan(), rng, others)
+        check_group_range(plan(db), rng, others)
     except AssignmentError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     return rng
@@ -170,5 +170,5 @@ def delete_group(group_id: int, db: Session = Depends(get_db)) -> Response:
 def next_free_ip(group_id: int, db: Session = Depends(get_db)) -> dict[str, str | None]:
     group = _get(db, group_id)
     taken = {IPv4Address(ip) for ip in db.scalars(select(Device.static_ip).where(Device.static_ip.is_not(None)))}
-    free = next_free(plan(), group.ip_range(), taken)
+    free = next_free(plan(db), group.ip_range(), taken)
     return {"ip": str(free) if free else None}

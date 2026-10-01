@@ -14,15 +14,17 @@ from app.config import settings
 from app.db import get_db
 from app.models import Access, Device, Group
 from app.net.ipplan import AssignmentError
-from app.pihole.client import PiholeClient, PiholeError
+from app.netconfig import load_netconfig
+from app.pihole.client import PiholeClient, PiholeError, shared_session
 from app.pihole.sync import apply_sync
 
 router = APIRouter(prefix="/api/devices", tags=["approval"])
 PiholeFactory = Callable[[], AbstractContextManager[PiholeClient]]
 
 
-def get_pihole_factory() -> PiholeFactory:
-    return lambda: PiholeClient(settings.pihole_url, settings.pihole_password)
+def get_pihole_factory(db: Session = Depends(get_db)) -> PiholeFactory:
+    url = load_netconfig(db).pihole_url
+    return lambda: PiholeClient(url, settings.pihole_password, shared=shared_session(url))
 
 
 class ApproveIn(BaseModel):
@@ -52,9 +54,9 @@ def _enforce(db: Session, factory: PiholeFactory, revoke_ip: str | None) -> str:
     return "applied"
 
 
-def _quarantine_ip(device: Device) -> str | None:
+def _quarantine_ip(db: Session, device: Device) -> str | None:
     try:
-        return device.last_ip if device.last_ip and IPv4Address(device.last_ip) in plan().quarantine else None
+        return device.last_ip if device.last_ip and IPv4Address(device.last_ip) in plan(db).quarantine else None
     except ValueError:
         return None
 
@@ -67,11 +69,11 @@ def approve(device_id: uuid.UUID, body: ApproveIn, db: Session = Depends(get_db)
     if group is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unknown group")
     try:
-        approve_device(db, device, plan=plan(), name=body.name, group=group, access=body.access, static_ip=body.static_ip)
+        approve_device(db, device, plan=plan(db), name=body.name, group=group, access=body.access, static_ip=body.static_ip)
     except (ApprovalError, AssignmentError) as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     db.commit()
-    enforcement = _enforce(db, factory, _quarantine_ip(device))
+    enforcement = _enforce(db, factory, _quarantine_ip(db, device))
     return ApprovalOut(device=DeviceOut.model_validate(device), enforcement=enforcement)
 
 

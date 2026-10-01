@@ -26,7 +26,7 @@ function hostOf(url: string): string {
 
 export default function OverviewPage() {
   const { settings } = useSettings();
-  const devicesRes = useResource<Device[]>("/devices", { refreshMs: 30_000 });
+  const devicesRes = useResource<Device[]>("/devices", { refreshMs: 15_000 });
   const groupsRes = useResource<Group[]>("/groups");
   const [query, setQuery] = useState("");
   const [groupId, setGroupId] = useState<number | "all">("all");

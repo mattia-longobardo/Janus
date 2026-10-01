@@ -1,5 +1,6 @@
 import logging
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Any, Protocol
 from zoneinfo import ZoneInfo
@@ -14,7 +15,7 @@ from app.notify.channels import NotifyError
 from app.notify.debounce import Debouncer
 from app.notify.policy import channels_for, suppressed_by_schedule
 from app.notify.render import Message, render
-from app.notify.store import NotifySettings, load_notify_settings, load_rules
+from app.notify.store import NotifySettings, effective_priority, load_notify_settings, load_priorities, load_rules
 
 log = logging.getLogger("janus.notify")
 CURSOR_KEY = "notify.cursor"
@@ -86,6 +87,7 @@ def dispatch_pending(
 
     ns = load_notify_settings(db)
     rules = load_rules(db)
+    priorities = load_priorities(db)
     ready = {name for name, sender in senders.items() if sender.ready(ns)}
     down_delivered: dict[str, bool] = dict(_value(db, DOWN_DELIVERED_KEY, {}))
     now_local = now.astimezone(tz)
@@ -98,6 +100,7 @@ def dispatch_pending(
         device = db.scalar(select(Device).where(Device.mac == event.mac)) if event.mac else None
         message = render(event, device.name if device else None, base_url=base_url, tz=tz,
                          quarantine_active=quarantine_active)
+        message = replace(message, priority=effective_priority(event.type, priorities))
         transient = []
         for channel in entry["channels"]:
             if channel in entry["sent"] or channel in entry["skip"]:

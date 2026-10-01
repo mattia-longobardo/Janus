@@ -4,7 +4,7 @@ import type { Access, EventItem } from "@/lib/types";
 export const EVENT_TYPES = [
   "device.new", "device.approved", "device.blocked", "device.updated", "device.deleted", "device.offline", "device.ip_mismatch",
   "device.private_mac", "device.gateway", "ip.conflict", "infra.down", "infra.up", "sync.applied", "sync.failed",
-  "security.new_port", "security.risky_service", "scan.completed", "scan.failed", "maintenance.start",
+  "security.new_port", "security.risky_service", "security.risk_muted", "security.risk_unmuted", "scan.completed", "scan.failed", "maintenance.start",
   "maintenance.end", "notify.test", "notify.failed", "import.csv",
 ];
 
@@ -49,6 +49,10 @@ export function describeEvent(event: Pick<EventItem, "type" | "payload">): strin
         ? `Risky services on ports ${ports.map((x) => x.port).join(", ")}`
         : `Risky service on port ${ports[0]?.port ?? "?"}`;
     }
+    case "security.risk_muted":
+      return `Muted alerts for port ${p.port}/${p.proto}${p.service ? ` (${p.service})` : ""}`;
+    case "security.risk_unmuted":
+      return `Alerts back on for port ${p.port}/${p.proto}${p.service ? ` (${p.service})` : ""}`;
     case "scan.completed":
       return `Scan finished: ${p.open_ports} open port(s)`;
     case "scan.failed":

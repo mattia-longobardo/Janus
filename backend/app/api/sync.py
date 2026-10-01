@@ -6,14 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
-from app.pihole.client import PiholeClient, PiholeError
+from app.netconfig import load_netconfig
+from app.pihole.client import PiholeClient, PiholeError, shared_session
 from app.pihole.sync import apply_sync, plan_sync
 
 router = APIRouter(prefix="/api/sync", tags=["sync"])
 
 
-def get_pihole() -> Iterator[PiholeClient]:
-    with PiholeClient(settings.pihole_url, settings.pihole_password) as client:
+def get_pihole(db: Session = Depends(get_db)) -> Iterator[PiholeClient]:
+    url = load_netconfig(db).pihole_url
+    with PiholeClient(url, settings.pihole_password, shared=shared_session(url)) as client:
         yield client
 
 
