@@ -113,3 +113,15 @@ def test_rename_placeholder_without_mac_still_works(client, db, seeded):
     db.add(knob)
     db.flush()
     assert client.patch(f"/api/devices/{knob.id}", json={"name": "KNOB 2"}).status_code == 200
+
+
+def test_delete_device_forgets_it_and_logs(client, seeded, db):
+    laptop = seeded["laptop"]
+    response = client.delete(f"/api/devices/{laptop.id}")
+    assert response.status_code == 204
+    db.expire_all()
+    assert db.get(Device, laptop.id) is None
+    event = db.scalars(select(Event).where(Event.type == "device.deleted")).one()
+    assert event.mac == "00:00:5E:00:53:10"
+    assert event.payload == {"name": "LAPTOP_A", "ip": "192.168.1.10", "group": "People"}
+    assert client.delete(f"/api/devices/{laptop.id}").status_code == 404
