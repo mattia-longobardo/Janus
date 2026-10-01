@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { BOX_HEADER, NODE_H, NODE_W, TIER_H, TIER_W, autoLayout, groupBoxes, groupKey, nodeSize, roleOf, wires } from "@/lib/map-layout";
+import { BOX_HEADER, NODE_H, NODE_W, TIER_H, TIER_W, autoLayout, groupBoxes, groupKey, nodeSize, roleOf, topology, wires } from "@/lib/map-layout";
 import { makeDevice, makeGroup } from "@/lib/test-data";
 
 const GATEWAY = "192.168.1.1";
@@ -87,5 +87,43 @@ describe("wires", () => {
       expect(w.dashed.some(([x1, y1, x2, y2]) => y1 === headerY && y2 === headerY && Math.max(x1, x2) === box.x)).toBe(true);
     }
     expect(w.badge).not.toBeNull();
+  });
+});
+
+describe("wired uplinks shape the tree", () => {
+  const links = [
+    { id: 1, source_id: "gw", target_id: "p0", kind: "wired" as const, label: null },
+    { id: 2, source_id: "p0", target_id: "p1", kind: "wired" as const, label: null },
+    { id: 3, source_id: "srv", target_id: "m0", kind: "wired" as const, label: null },
+    { id: 4, source_id: "ap1", target_id: "p2", kind: "wifi" as const, label: null },
+  ];
+  const topo = topology(devices, groups, GATEWAY, links);
+  const positions = autoLayout(devices, groups, GATEWAY, links);
+
+  it("moves wired devices out of their group boxes into tier rows under their parent", () => {
+    expect([topo.role.get("p0"), topo.depth.get("p0"), topo.parent.get("p0")]).toEqual(["infra", 1, "gw"]);
+    expect([topo.depth.get("p1"), topo.parent.get("p1")]).toEqual([2, "p0"]);
+    expect([topo.depth.get("m0"), topo.parent.get("m0")]).toEqual([2, "srv"]);
+    expect(topo.role.get("p2")).toBe("member");
+    expect([...topo.treeLinks].sort()).toEqual([1, 2, 3]);
+    expect(positions.p0.y).toBe(positions.ap1.y);
+    expect(positions.p1.y).toBeGreaterThan(positions.p0.y);
+    expect(Math.abs(positions.p1.x - positions.p0.x)).toBeLessThan(1);
+    expect(Math.abs(positions.m0.x - positions.srv.x)).toBeLessThan(1);
+  });
+
+  it("keeps tiers above the groups and nothing overlapping", () => {
+    const boxes = groupBoxes(devices, groups, GATEWAY, positions, links);
+    const lowestTier = Math.max(positions.p1.y, positions.m0.y) + TIER_H;
+    for (const box of boxes) expect(box.y).toBeGreaterThan(lowestTier);
+    const role = (id: string) => topo.role.get(id)!;
+    const sized = (id: string) => ({ ...positions[id], ...nodeSize(role(id)) });
+    const ids = Object.keys(positions);
+    for (let i = 0; i < ids.length; i += 1) {
+      for (let j = i + 1; j < ids.length; j += 1) expect(overlaps(sized(ids[i]), sized(ids[j]))).toBe(false);
+    }
+    const w = wires(devices, groups, GATEWAY, positions, boxes, links);
+    const p1 = positions.p1;
+    expect(w.solid.some(([x1, , x2, y2]) => x1 === x2 && x1 === p1.x + TIER_W / 2 && y2 === p1.y)).toBe(true);
   });
 });

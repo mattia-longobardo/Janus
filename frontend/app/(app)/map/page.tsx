@@ -38,13 +38,14 @@ import {
   groupKey,
   nodeSize,
   roleOf,
+  topology,
   wires,
 } from "@/lib/map-layout";
 import { useSettings } from "@/lib/settings-context";
 import type { Device, Group, MapData } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
-const LAYOUT_VERSION = 2;
+const LAYOUT_VERSION = 3;
 const FIT = { padding: { top: "96px", right: "24px", bottom: "72px", left: "24px" } } as const;
 type DeviceData = { device: Device; groups: Group[]; showIp: boolean; w: number; h: number; gateway: boolean };
 type BoxData = { label: string; color: string; range: string; count: number; pending: boolean };
@@ -168,6 +169,8 @@ function MapCanvas() {
   const [message, setMessage] = useState<{ tone: "success" | "error"; text: string }>();
   const groups = useMemo(() => groupsRes.data ?? [], [groupsRes.data]);
   const devices = useMemo(() => (devicesRes.data ?? []).filter((d) => d.access !== "blocked"), [devicesRes.data]);
+  const links = useMemo(() => mapRes.data?.links ?? [], [mapRes.data]);
+  const topo = useMemo(() => topology(devices, groups, gatewayIp, links), [devices, groups, gatewayIp, links]);
 
   useEffect(() => {
     if (!devicesRes.data || !groupsRes.data || !mapRes.data) return;
@@ -175,7 +178,7 @@ function MapCanvas() {
       mapRes.data.layout_version === LAYOUT_VERSION
         ? Object.fromEntries(mapRes.data.positions.map((p) => [p.device_id, { x: p.x, y: p.y }]))
         : {};
-    const auto = autoLayout(devices, groups, gatewayIp);
+    const auto = autoLayout(devices, groups, gatewayIp, mapRes.data.links);
     setPositions((current) => ({ ...auto, ...saved, ...current }));
   }, [devicesRes.data, groupsRes.data, mapRes.data, devices, groups, gatewayIp]);
 
@@ -189,12 +192,15 @@ function MapCanvas() {
     return () => window.clearTimeout(id);
   }, [fitted, positions, flow]);
 
-  const boxes = useMemo(() => groupBoxes(devices, groups, gatewayIp, positions), [devices, groups, gatewayIp, positions]);
-  const wiring = useMemo(() => wires(devices, groups, gatewayIp, positions, boxes), [devices, groups, gatewayIp, positions, boxes]);
+  const boxes = useMemo(() => groupBoxes(devices, groups, gatewayIp, positions, links), [devices, groups, gatewayIp, positions, links]);
+  const wiring = useMemo(
+    () => wires(devices, groups, gatewayIp, positions, boxes, links),
+    [devices, groups, gatewayIp, positions, boxes, links],
+  );
 
   const boxInfo = useCallback(
     (box: Box): BoxData => {
-      const count = devices.filter((d) => roleOf(d, groups, gatewayIp) === "member" && groupKey(d) === box.key).length;
+      const count = devices.filter((d) => roleOf(d, groups, gatewayIp, topo) === "member" && groupKey(d) === box.key).length;
       if (box.key === "pending") {
         const range = `.${settings.network.quarantine_start.split(".")[3]}–.${settings.network.quarantine_end.split(".")[3]}`;
         return { label: "Quarantine", color: PENDING_COLOR, range, count, pending: true };
@@ -209,7 +215,7 @@ function MapCanvas() {
   const deviceData = useMemo(() => {
     const data = new Map<string, DeviceData>();
     for (const d of devices) {
-      const role = roleOf(d, groups, gatewayIp);
+      const role = roleOf(d, groups, gatewayIp, topo);
       data.set(d.id, { device: d, groups, showIp, gateway: role === "gateway", ...nodeSize(role) });
     }
     return data;
@@ -272,19 +278,24 @@ function MapCanvas() {
 
   const edges = useMemo<Edge[]>(
     () =>
-      (mapRes.data?.links ?? []).map((link) => ({
-        id: `link:${link.id}`,
-        source: link.source_id,
-        target: link.target_id,
-        type: "smoothstep",
-        label: link.label ?? undefined,
-        style: {
-          stroke: link.kind === "wifi" ? "var(--ok)" : "var(--line2)",
-          strokeWidth: 1.5,
-          strokeDasharray: link.kind === "wifi" ? "5 4" : undefined,
-        },
-      })),
-    [mapRes.data],
+      links.map((link) => {
+        const inTree = topo.treeLinks.has(link.id);
+        return {
+          id: `link:${link.id}`,
+          source: link.source_id,
+          target: link.target_id,
+          type: inTree ? "step" : "smoothstep",
+          label: link.label ?? undefined,
+          interactionWidth: 16,
+          className: inTree ? "janus-tree-edge" : undefined,
+          style: {
+            stroke: inTree ? "transparent" : link.kind === "wifi" ? "var(--ok)" : "var(--line2)",
+            strokeWidth: 1.5,
+            strokeDasharray: link.kind === "wifi" ? "5 4" : undefined,
+          },
+        };
+      }),
+    [links, topo],
   );
 
   const onNodesChange = useCallback((changes: NodeChange[]) => {
@@ -301,32 +312,36 @@ function MapCanvas() {
     setDirty(true);
   }, []);
 
-  const onConnect = useCallback(
-    async (connection: Connection) => {
-      const { source, target } = connection;
-      if (!source || !target || !positions[source] || !positions[target]) return;
-      try {
-        await api.post("/map/links", { source_id: source, target_id: target, kind: linkKind });
-        await mapRes.reload();
-      } catch (err) {
-        setMessage({ tone: "error", text: errorText(err) });
-      }
-    },
-    [linkKind, mapRes, positions],
-  );
+  const onConnect = async (connection: Connection) => {
+    const { source, target } = connection;
+    if (!source || !target || !positions[source] || !positions[target]) return;
+    try {
+      await api.post("/map/links", { source_id: source, target_id: target, kind: linkKind });
+      await relayout();
+    } catch (err) {
+      setMessage({ tone: "error", text: errorText(err) });
+    }
+  };
 
-  const onEdgeClick = useCallback(
-    async (_: unknown, edge: Edge) => {
-      if (!window.confirm("Remove this uplink?")) return;
-      try {
-        await api.del(`/map/links/${edge.id.replace("link:", "")}`);
-        await mapRes.reload();
-      } catch (err) {
-        setMessage({ tone: "error", text: errorText(err) });
-      }
-    },
-    [mapRes],
-  );
+  const onEdgeClick = async (_: unknown, edge: Edge) => {
+    if (!window.confirm("Remove this uplink?")) return;
+    try {
+      await api.del(`/map/links/${edge.id.replace("link:", "")}`);
+      await relayout();
+    } catch (err) {
+      setMessage({ tone: "error", text: errorText(err) });
+    }
+  };
+
+  async function relayout() {
+    const fresh = await api.get<MapData>("/map");
+    const next = autoLayout(devices, groups, gatewayIp, fresh.links);
+    setPositions(next);
+    await api.put("/map/positions", devices.filter((d) => next[d.id]).map((d) => ({ device_id: d.id, ...next[d.id] })));
+    setDirty(false);
+    await mapRes.reload();
+    window.setTimeout(() => void flow.fitView(FIT), 80);
+  }
 
   async function openDevice(node: Node) {
     if (!positions[node.id]) return;
@@ -335,7 +350,7 @@ function MapCanvas() {
   }
 
   function arrange() {
-    setPositions(autoLayout(devices, groups, gatewayIp));
+    setPositions(autoLayout(devices, groups, gatewayIp, links));
     setDirty(true);
     window.setTimeout(() => void flow.fitView(FIT), 50);
   }

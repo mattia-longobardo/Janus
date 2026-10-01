@@ -12,7 +12,7 @@ from app.models import Device, Link, Setting
 
 router = APIRouter(prefix="/api/map", tags=["map"])
 LAYOUT_KEY = "map.layout_version"
-LAYOUT_VERSION = 2
+LAYOUT_VERSION = 3
 
 
 class PositionIn(BaseModel):
