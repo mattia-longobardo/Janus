@@ -19,6 +19,11 @@ class SettingsPatch(BaseModel):
     time_format: Literal["24h", "12h"] | None = None
 
 
+def _setting(db: Session, key: str) -> Any:
+    row = db.get(Setting, key)
+    return row.value if row is not None else None
+
+
 def _view(db: Session) -> dict[str, Any]:
     row = db.get(Setting, TIME_FORMAT_KEY)
     return {
@@ -35,6 +40,13 @@ def _view(db: Session) -> dict[str, Any]:
             "sweep_interval_s": settings.sweep_interval_s,
         },
         "scan_window": {"start": settings.scan_window_start, "end": settings.scan_window_end},
+        "status": {
+            "pihole_down_since": _setting(db, "pihole.down_since"),
+            "sentinel_down_since": _setting(db, "sentinel.down_since"),
+            "last_sweep_at": _setting(db, "sentinel.heartbeat"),
+            "maintenance_active": bool(_setting(db, "maintenance.active")),
+        },
+        "channels": {"gotify_url": settings.gotify_url, "email_sender": settings.smtp_sender},
     }
 
 

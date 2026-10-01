@@ -2,7 +2,7 @@ import { ACCESS_LABELS } from "@/lib/format";
 import type { Access, EventItem } from "@/lib/types";
 
 export const EVENT_TYPES = [
-  "device.new", "device.approved", "device.blocked", "device.updated", "device.offline", "device.ip_mismatch",
+  "device.new", "device.approved", "device.blocked", "device.updated", "device.deleted", "device.offline", "device.ip_mismatch",
   "device.private_mac", "device.gateway", "ip.conflict", "infra.down", "infra.up", "sync.applied", "sync.failed",
   "security.new_port", "security.risky_service", "scan.completed", "scan.failed", "maintenance.start",
   "maintenance.end", "notify.test", "notify.failed", "import.csv",
@@ -19,6 +19,8 @@ export function describeEvent(event: Pick<EventItem, "type" | "payload">): strin
       return `Approved ${p.name} → ${p.ip} (${ACCESS_LABELS[p.access as Access] ?? p.access})`;
     case "device.blocked":
       return `Blocked ${p.name}`;
+    case "device.deleted":
+      return `Deleted ${p.name}${p.ip ? ` (${p.ip})` : ""}`;
     case "device.updated":
       return `Updated ${Object.keys(p.changes ?? {}).join(", ") || "device"}`;
     case "device.offline":

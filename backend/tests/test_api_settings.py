@@ -15,3 +15,14 @@ def test_put_settings(client):
 def test_put_settings_rejects_unknown_zone_and_format(client):
     assert client.put("/api/settings", json={"timezone": "Mars/Olympus"}).status_code == 422
     assert client.put("/api/settings", json={"time_format": "36h"}).status_code == 422
+
+
+def test_settings_report_infrastructure_status(client, db):
+    from app.models import Setting
+
+    db.add_all([Setting(key="pihole.down_since", value="2026-10-01T05:00:00+00:00"),
+                Setting(key="sentinel.heartbeat", value="2026-10-01T10:00:00+00:00")])
+    db.flush()
+    status = client.get("/api/settings").json()["status"]
+    assert status == {"pihole_down_since": "2026-10-01T05:00:00+00:00", "sentinel_down_since": None,
+                      "last_sweep_at": "2026-10-01T10:00:00+00:00", "maintenance_active": False}

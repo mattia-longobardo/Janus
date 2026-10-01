@@ -1,14 +1,24 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { ApproveForm } from "@/components/approve-form";
-import { Badge, Button, Card, Notice, PageHeader } from "@/components/ui";
-import { api, errorText } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { InfoCard, InfoRow } from "@/components/device-info";
+import { Card, Notice } from "@/components/ui";
+import { describeEvent } from "@/lib/events";
+import { formatDateTime, ipSortKey, relativeTime } from "@/lib/format";
 import { useSettings } from "@/lib/settings-context";
-import type { Approval, Device, Group } from "@/lib/types";
+import type { Approval, Device, EventItem, Group } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
+
+const EVENT_DOT: Record<string, string> = {
+  "device.new": "bg-accent",
+  "notify.failed": "bg-bad",
+  "ip.conflict": "bg-bad",
+  "device.approved": "bg-ok",
+  "device.blocked": "bg-bad",
+};
 
 export default function PendingPage() {
   const { settings } = useSettings();
@@ -18,63 +28,100 @@ export default function PendingPage() {
   const pending = devicesRes.data ?? [];
   const groups = groupsRes.data ?? [];
 
-  function approved(result: Approval) {
-    const enforcement = result.enforcement === "dry-run" ? "saved (Pi-hole is in dry-run)" : result.enforcement;
-    setNotice({ tone: "success", text: `${result.device.name} approved on ${result.device.static_ip} — ${enforcement}` });
+  function done(result: Approval) {
+    const enforcement = result.enforcement === "dry-run" ? "saved (Pi-hole sync is in dry-run)" : result.enforcement;
+    const what = result.device.access === "blocked" ? "blocked" : `approved on ${result.device.static_ip}`;
+    setNotice({ tone: result.enforcement.startsWith("failed") ? "error" : "success", text: `${result.device.name} ${what} — ${enforcement}` });
     void devicesRes.reload();
   }
 
-  async function block(device: Device) {
-    if (!window.confirm(`Block ${device.name}? It will get no network.`)) return;
-    try {
-      const result = await api.post<Approval>(`/devices/${device.id}/block`);
-      setNotice({ tone: "success", text: `${result.device.name} blocked — ${result.enforcement}` });
-      await devicesRes.reload();
-    } catch (err) {
-      setNotice({ tone: "error", text: errorText(err) });
-    }
-  }
-
   return (
-    <>
-      <PageHeader
-        title="Pending devices"
-        subtitle={settings.sync_mode === "apply" ? "in quarantine until you decide" : "detected — quarantine starts when Pi-hole serves DHCP"}
-      />
+    <div className="flex flex-col gap-6">
+      <Link href="/" className="self-start text-sm no-underline">
+        <span className="text-ok hover:text-text">← Back to overview</span>
+      </Link>
       {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
       {devicesRes.error && <Notice tone="error">{devicesRes.error}</Notice>}
-      {pending.length === 0 ? (
-        <Card className="p-8 text-center text-muted">Nothing is waiting. New devices appear here as soon as they connect.</Card>
-      ) : (
-        <div className="flex flex-col gap-5">
-          {pending.map((device) => (
-            <Card key={device.id} id={device.id} className="grid gap-6 p-5 lg:grid-cols-[1fr_1.2fr] lg:p-6">
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-display text-2xl font-bold">{device.name}</h2>
-                  {device.private_mac && <Badge tone="accent">private MAC</Badge>}
-                </div>
-                <dl className="grid grid-cols-[130px_1fr] gap-x-3 gap-y-2 text-sm">
-                  <dt className="text-faint">MAC</dt>
-                  <dd className="font-mono">{device.mac}</dd>
-                  <dt className="text-faint">Vendor</dt>
-                  <dd>{device.vendor ?? (device.private_mac ? "Hidden (private MAC)" : "Unknown")}</dd>
-                  <dt className="text-faint">DHCP name</dt>
-                  <dd className="font-mono">{device.dhcp_hostname ?? "—"}</dd>
-                  <dt className="text-faint">Current IP</dt>
-                  <dd className="font-mono">{device.last_ip ?? "—"}</dd>
-                  <dt className="text-faint">First seen</dt>
-                  <dd className="font-mono">{formatDateTime(device.first_seen, settings.timezone, settings.time_format)}</dd>
-                </dl>
-                <Button variant="danger" className="mt-auto self-start" onClick={() => void block(device)}>
-                  Block
-                </Button>
-              </div>
-              <ApproveForm device={device} groups={groups} onApproved={approved} />
-            </Card>
-          ))}
-        </div>
+      {!devicesRes.loading && pending.length === 0 && (
+        <>
+          <header className="flex flex-col gap-1.5">
+            <h1 className="font-display text-[30px] font-bold tracking-[-0.02em] lg:text-[36px]">Pending devices</h1>
+            <p className="font-mono text-[13px] text-faint">nothing waiting</p>
+          </header>
+          <Card className="p-8 text-center text-muted">Nothing is waiting. New devices appear here as soon as they connect.</Card>
+        </>
       )}
-    </>
+      {pending.map((device, index) => (
+        <PendingDevice key={device.id} device={device} groups={groups} onDone={done} first={index === 0} quarantine={settings.network} />
+      ))}
+    </div>
+  );
+}
+
+function PendingDevice({
+  device,
+  groups,
+  onDone,
+  first,
+  quarantine,
+}: {
+  device: Device;
+  groups: Group[];
+  onDone: (result: Approval) => void;
+  first: boolean;
+  quarantine: { quarantine_start: string; quarantine_end: string };
+}) {
+  const { settings } = useSettings();
+  const eventsRes = useResource<EventItem[]>(device.mac ? `/events?mac=${encodeURIComponent(device.mac)}&limit=10` : null);
+  const inQuarantine =
+    device.last_ip !== null &&
+    ipSortKey(device.last_ip) >= ipSortKey(quarantine.quarantine_start) &&
+    ipSortKey(device.last_ip) <= ipSortKey(quarantine.quarantine_end);
+  const time = (iso: string | null) => formatDateTime(iso, settings.timezone, settings.time_format);
+  const events = eventsRes.data ?? [];
+
+  return (
+    <section id={device.id} className={first ? "flex flex-col gap-6" : "flex flex-col gap-6 border-t border-line pt-8"}>
+      <header className="flex flex-wrap items-end justify-between gap-6">
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <h1 className="break-words font-display text-[30px] font-bold tracking-[-0.02em] lg:text-[36px]">{device.name}</h1>
+          <p className="font-mono text-[13px] text-faint">
+            new device · {inQuarantine ? "in quarantine" : "detected"} · first seen {relativeTime(device.first_seen)}
+          </p>
+        </div>
+        <span className="inline-flex h-[34px] items-center rounded-full border border-accent-line px-3.5 text-[13px] font-medium text-accent-text">
+          Waiting for approval
+        </span>
+      </header>
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+        <div className="flex flex-col gap-5">
+          <InfoCard title="What we know">
+            <InfoRow labelWidth={150} label="MAC" mono value={device.mac ?? "—"} />
+            <InfoRow labelWidth={150} label="Vendor (OUI)" mono value={device.vendor ?? (device.private_mac ? "hidden (private MAC)" : "unknown")} />
+            <InfoRow labelWidth={150} label="DHCP hostname" mono value={device.dhcp_hostname ?? "— not sent —"} />
+            <InfoRow labelWidth={150} label="First seen" mono value={time(device.first_seen)} />
+            <InfoRow labelWidth={150} label="Last seen" mono value={device.online ? "now" : time(device.last_seen)} />
+            <InfoRow labelWidth={150} label="Current IP" mono value={device.last_ip ? `${device.last_ip}${inQuarantine ? " (quarantine)" : ""}` : "—"} />
+            <InfoRow labelWidth={150} label="Private MAC" mono value={device.private_mac ? "Yes" : "No"} />
+          </InfoCard>
+          <InfoCard title="Events">
+            {events.length === 0 ? (
+              <p className="py-2 text-sm text-muted">No events for this device yet.</p>
+            ) : (
+              <ol className="flex flex-col">
+                {events.map((event) => (
+                  <li key={event.id} className="grid grid-cols-[96px_14px_1fr] items-start gap-3 py-[7px]">
+                    <span className="font-mono text-xs text-faint">{time(event.ts)}</span>
+                    <span className={`mt-[5px] size-2 rounded-full ${EVENT_DOT[event.type] ?? "bg-muted"}`} aria-hidden />
+                    <span className="text-sm text-text2">{describeEvent(event)}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </InfoCard>
+        </div>
+        <ApproveForm device={device} groups={groups} onApproved={onDone} onBlocked={onDone} />
+      </div>
+    </section>
   );
 }

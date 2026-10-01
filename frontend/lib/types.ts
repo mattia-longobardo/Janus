@@ -113,6 +113,13 @@ export interface AppSettings {
     sweep_interval_s: number;
   };
   scan_window: { start: string; end: string };
+  status: {
+    pihole_down_since: string | null;
+    sentinel_down_since: string | null;
+    last_sweep_at: string | null;
+    maintenance_active: boolean;
+  };
+  channels: { gotify_url: string; email_sender: string };
 }
 
 export interface MapLink {
@@ -124,6 +131,7 @@ export interface MapLink {
 }
 
 export interface MapData {
+  layout_version: number;
   positions: { device_id: string; x: number; y: number }[];
   links: MapLink[];
 }

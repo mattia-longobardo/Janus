@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from ipaddress import IPv4Address
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -127,3 +127,16 @@ def update_device(device_id: uuid.UUID, body: DevicePatch, db: Session = Depends
         record_event(db, "device.updated", device.mac, {"changes": changes})
     db.commit()
     return device
+
+
+@router.delete("/{device_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_device(device_id: uuid.UUID, db: Session = Depends(get_db)) -> Response:
+    device = get_device_or_404(db, device_id)
+    record_event(db, "device.deleted", device.mac, {
+        "name": device.name,
+        "ip": device.static_ip or device.last_ip,
+        "group": device.group.name if device.group else None,
+    })
+    db.delete(device)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -1,7 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
-import { DeviceTable } from "@/components/device-table";
+import { DeviceTable, sortDevices } from "@/components/device-table";
 import { makeDevice, makeGroup } from "@/lib/test-data";
 
 describe("DeviceTable", () => {
@@ -18,6 +19,57 @@ describe("DeviceTable", () => {
     expect(within(row).getByText("192.168.1.155")).toBeTruthy();
     expect(within(row).getByText("private MAC")).toBeTruthy();
     expect(within(row).getByText("Offline")).toBeTruthy();
+  });
+
+  it("pages through every device and remembers the page size", async () => {
+    const devices = Array.from({ length: 30 }, (_, i) => makeDevice({ id: `d${i}`, name: `DEV_${String(i).padStart(2, "0")}` }));
+    render(<DeviceTable devices={devices} groups={[makeGroup()]} />);
+    expect(screen.getAllByRole("link")).toHaveLength(25);
+    expect(screen.getByText("1–25 of 30")).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual(["DEV_25", "DEV_26", "DEV_27", "DEV_28", "DEV_29"]);
+    await userEvent.selectOptions(screen.getByLabelText("Rows per page"), "50");
+    expect(screen.getAllByRole("link")).toHaveLength(30);
+    expect(localStorage.getItem("janus.pageSize")).toBe("50");
+  });
+
+  it("offers a delete action per row only when a handler is given", async () => {
+    const onDelete = vi.fn();
+    const device = makeDevice({ id: "d1", name: "OLD_TV" });
+    const { rerender } = render(<DeviceTable devices={[device]} groups={[makeGroup()]} />);
+    expect(screen.queryByRole("button", { name: "Delete OLD_TV" })).toBeNull();
+    rerender(<DeviceTable devices={[device]} groups={[makeGroup()]} onDelete={onDelete} />);
+    await userEvent.click(screen.getByRole("button", { name: "Delete OLD_TV" }));
+    expect(onDelete).toHaveBeenCalledWith(device);
+  });
+
+  it("sorts by a column and flips direction on a second click", async () => {
+    const devices = [
+      makeDevice({ id: "a", name: "TV", static_ip: "192.168.1.150" }),
+      makeDevice({ id: "b", name: "LAPTOP", static_ip: "192.168.1.9" }),
+      makeDevice({ id: "c", name: "printer", static_ip: "192.168.1.20" }),
+    ];
+    render(<DeviceTable devices={devices} groups={[makeGroup()]} />);
+    const names = () => screen.getAllByRole("link").map((a) => a.textContent);
+    expect(names()).toEqual(["TV", "LAPTOP", "printer"]);
+    await userEvent.click(screen.getByRole("button", { name: /^Name/ }));
+    expect(names()).toEqual(["LAPTOP", "printer", "TV"]);
+    expect(screen.getByRole("columnheader", { name: /Name/ }).getAttribute("aria-sort")).toBe("ascending");
+    await userEvent.click(screen.getByRole("button", { name: /^Name/ }));
+    expect(names()).toEqual(["TV", "printer", "LAPTOP"]);
+    await userEvent.click(screen.getByRole("button", { name: /^Static IP/ }));
+    expect(names()).toEqual(["LAPTOP", "printer", "TV"]);
+  });
+
+  it("puts online devices and known vendors first", () => {
+    const groups = [makeGroup()];
+    const devices = [
+      makeDevice({ id: "off", online: false, last_seen: "2026-10-01T08:00:00Z", vendor: null }),
+      makeDevice({ id: "on", online: true, vendor: "Acme" }),
+    ];
+    expect(sortDevices(devices, groups, "status", "asc").map((d) => d.id)).toEqual(["on", "off"]);
+    expect(sortDevices(devices, groups, "seen", "asc").map((d) => d.id)).toEqual(["on", "off"]);
+    expect(sortDevices(devices, groups, "vendor", "asc").map((d) => d.id)).toEqual(["on", "off"]);
   });
 
   it("says when nothing matches", () => {

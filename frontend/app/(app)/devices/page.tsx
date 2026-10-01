@@ -1,11 +1,11 @@
 "use client";
 
-import clsx from "clsx";
-import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { DeviceTable } from "@/components/device-table";
-import { Card, Notice, PageHeader, inputClass } from "@/components/ui";
+import { Chip, Notice, inputClass } from "@/components/ui";
+import { errorText } from "@/lib/api";
+import { deleteDevice } from "@/lib/delete-device";
 import { filterDevices } from "@/lib/filter";
 import { ACCESS_LABELS } from "@/lib/format";
 import type { Access, Device, Group } from "@/lib/types";
@@ -15,30 +15,52 @@ export default function DevicesPage() {
   const devicesRes = useResource<Device[]>("/devices", { refreshMs: 30_000 });
   const groupsRes = useResource<Group[]>("/groups");
   const [query, setQuery] = useState("");
+  const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string }>();
+
+  async function remove(device: Device) {
+    try {
+      if (!(await deleteDevice(device))) return;
+      setNotice({ tone: "success", text: `${device.name} deleted.` });
+      await devicesRes.reload();
+    } catch (err) {
+      setNotice({ tone: "error", text: errorText(err) });
+    }
+  }
   const [groupId, setGroupId] = useState<number | "all">("all");
   const [access, setAccess] = useState<Access | "all">("all");
-  const groups = groupsRes.data ?? [];
-  const devices = devicesRes.data ?? [];
-  const filtered = useMemo(() => filterDevices(devices, { query, groupId, access }), [devices, query, groupId, access]);
+  const groups = useMemo(() => groupsRes.data ?? [], [groupsRes.data]);
+  const devices = useMemo(() => devicesRes.data ?? [], [devicesRes.data]);
+  const base = useMemo(() => filterDevices(devices, { query, groupId: "all", access }), [devices, query, access]);
+  const shown = groupId === "all" ? base : base.filter((d) => d.group_id === groupId);
+  const chips = groups.map((g) => ({ group: g, count: base.filter((d) => d.group_id === g.id).length })).filter((c) => c.count > 0);
+  const online = devices.filter((d) => d.online).length;
 
   return (
-    <>
-      <PageHeader title="Devices" subtitle={`${devices.length} known · ${devices.filter((d) => d.online).length} online`} />
+    <div className="flex flex-col gap-6">
+      <header className="flex flex-col gap-1.5">
+        <h1 className="font-display text-[32px] font-bold tracking-[-0.02em] lg:text-4xl">Devices</h1>
+        <p className="font-mono text-[13px] text-faint">
+          {devices.length} known · {online} online · {devices.filter((d) => d.access === "pending").length} pending
+        </p>
+      </header>
+      {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
       {devicesRes.error && <Notice tone="error">{devicesRes.error}</Notice>}
-      <Card className="overflow-hidden">
+      <section className="overflow-hidden rounded-[14px] border border-line bg-card">
         <div className="flex flex-col gap-3 px-5 py-4 lg:flex-row lg:items-center">
-          <label className="flex h-11 items-center gap-2 rounded-lg border border-line2 bg-bg px-3 lg:w-80">
-            <Search className="size-4 text-faint" aria-hidden />
-            <span className="sr-only">Search devices</span>
+          <label className="flex h-11 items-center gap-2 rounded-lg border border-line2 bg-bg px-3.5 text-faint lg:w-[260px]">
+            <span className="font-mono text-xs" aria-hidden>
+              /
+            </span>
             <input
               type="search"
+              aria-label="Search devices"
+              placeholder="Name, IP or MAC"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Name, IP, MAC or vendor"
-              className="w-full bg-transparent text-sm outline-none"
+              className="w-full bg-transparent text-sm text-text outline-none placeholder:text-faint"
             />
           </label>
-          <label className="lg:w-52">
+          <label className="lg:w-48">
             <span className="sr-only">Access</span>
             <select className={inputClass} value={access} onChange={(e) => setAccess(e.target.value as Access | "all")}>
               <option value="all">Any access</option>
@@ -49,25 +71,19 @@ export default function DevicesPage() {
               ))}
             </select>
           </label>
-          <div className="flex flex-wrap gap-2 lg:ml-auto">
-            {[{ id: "all" as const, name: "All" }, ...groups].map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                aria-pressed={groupId === g.id}
-                onClick={() => setGroupId(g.id)}
-                className={clsx(
-                  "h-9 rounded-full border px-3 text-[13px]",
-                  groupId === g.id ? "border-inv-bg bg-inv-bg text-inv-fg" : "border-line2 text-text2",
-                )}
-              >
-                {g.name}
-              </button>
+          <div className="flex flex-wrap gap-2 lg:ml-auto lg:justify-end">
+            <Chip active={groupId === "all"} count={base.length} onClick={() => setGroupId("all")}>
+              All
+            </Chip>
+            {chips.map(({ group, count }) => (
+              <Chip key={group.id} active={groupId === group.id} count={count} onClick={() => setGroupId(group.id)}>
+                {group.name}
+              </Chip>
             ))}
           </div>
         </div>
-        <DeviceTable devices={filtered} groups={groups} />
-      </Card>
-    </>
+        <DeviceTable devices={shown} groups={groups} onDelete={(d) => void remove(d)} />
+      </section>
+    </div>
   );
 }

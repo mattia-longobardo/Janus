@@ -1,46 +1,82 @@
 "use client";
 
+import clsx from "clsx";
 import { useEffect, useState, type FormEvent } from "react";
 
-import { Button, Field, inputClass } from "@/components/ui";
+import { Button, inputClass } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
-import { ACCESS_LABELS } from "@/lib/format";
-import type { Approval, Device, Group } from "@/lib/types";
+import type { Access, Approval, Device, Group } from "@/lib/types";
 
-type AccessChoice = "" | "authorized" | "lan_only";
+type Choice = Extract<Access, "authorized" | "lan_only" | "blocked">;
 
-export function ApproveForm({ device, groups, onApproved }: { device: Device; groups: Group[]; onApproved: (result: Approval) => void }) {
+const CHOICES: { value: Choice; label: string; hint: string }[] = [
+  { value: "authorized", label: "Full network", hint: "Static DHCP reservation, normal DNS and gateway" },
+  { value: "lan_only", label: "LAN only", hint: "No gateway: reaches home devices, never the internet" },
+  { value: "blocked", label: "Block", hint: "No valid lease; every attempt is logged" },
+];
+
+function octet(ip: string): string {
+  return `.${ip.split(".")[3]}`;
+}
+
+export function ApproveForm({
+  device,
+  groups,
+  onApproved,
+  onBlocked,
+}: {
+  device: Device;
+  groups: Group[];
+  onApproved: (result: Approval) => void;
+  onBlocked?: (result: Approval) => void;
+}) {
   const [name, setName] = useState(device.dhcp_hostname ?? device.name);
   const [groupId, setGroupId] = useState<number | "">("");
   const [ip, setIp] = useState("");
-  const [access, setAccess] = useState<AccessChoice>("");
+  const [access, setAccess] = useState<Choice | null>(null);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const group = groups.find((g) => g.id === groupId);
+  const choice: Choice = access ?? (group?.default_access === "lan_only" ? "lan_only" : "authorized");
+
+  async function nextFree(id: number) {
+    try {
+      const result = await api.get<{ ip: string | null }>(`/groups/${id}/next-free-ip`);
+      setIp(result.ip ?? "");
+      if (!result.ip) setError("No free address left in this group's range.");
+    } catch (err) {
+      setError(errorText(err));
+    }
+  }
 
   useEffect(() => {
     if (groupId === "") return;
-    let cancelled = false;
-    api
-      .get<{ ip: string | null }>(`/groups/${groupId}/next-free-ip`)
-      .then((result) => {
-        if (!cancelled) setIp(result.ip ?? "");
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
+    setError(undefined);
+    void nextFree(groupId);
   }, [groupId]);
+
+  async function block() {
+    setBusy(true);
+    setError(undefined);
+    try {
+      const result = await api.post<Approval>(`/devices/${device.id}/block`);
+      (onBlocked ?? onApproved)(result);
+    } catch (err) {
+      setError(errorText(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (choice === "blocked") return block();
     if (groupId === "") return;
     setBusy(true);
     setError(undefined);
     try {
-      const body: Record<string, unknown> = { name: name.trim(), group_id: groupId };
+      const body: Record<string, unknown> = { name: name.trim(), group_id: groupId, access: choice };
       if (ip.trim()) body.static_ip = ip.trim();
-      if (access) body.access = access;
       onApproved(await api.post<Approval>(`/devices/${device.id}/approve`, body));
     } catch (err) {
       setError(errorText(err));
@@ -49,20 +85,17 @@ export function ApproveForm({ device, groups, onApproved }: { device: Device; gr
     }
   }
 
-  const choices: { value: AccessChoice; label: string; hint: string }[] = [
-    { value: "", label: `Group default (${group ? ACCESS_LABELS[group.default_access] : "—"})`, hint: "Use the group's policy" },
-    { value: "authorized", label: "Full network", hint: "Reservation with normal DNS and gateway" },
-    { value: "lan_only", label: "LAN only", hint: "No gateway: home devices yes, internet no" },
-  ];
-
   return (
-    <form onSubmit={submit} className="flex flex-col gap-4">
+    <form onSubmit={submit} className="flex flex-col gap-5 rounded-[14px] border border-line bg-card p-6">
+      <h2 className="font-display text-[19px] font-bold">Approve and register</h2>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Name">
+        <label className="flex flex-col gap-2">
+          <span className="text-[13px] font-medium text-text2">Name</span>
           <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} required maxLength={64} />
-        </Field>
-        <Field label="Group">
-          <select className={inputClass} value={groupId} onChange={(e) => setGroupId(Number(e.target.value))} required>
+        </label>
+        <label className="flex flex-col gap-2">
+          <span className="text-[13px] font-medium text-text2">Group</span>
+          <select className={inputClass} value={groupId} onChange={(e) => setGroupId(Number(e.target.value))} required={choice !== "blocked"}>
             <option value="" disabled>
               Choose a group…
             </option>
@@ -72,29 +105,52 @@ export function ApproveForm({ device, groups, onApproved }: { device: Device; gr
               </option>
             ))}
           </select>
-        </Field>
+        </label>
       </div>
-      <Field label="Static IP" hint={group ? `Range ${group.range_start}–${group.range_end}; leave empty for the next free address` : undefined}>
-        <input className={`${inputClass} font-mono`} value={ip} onChange={(e) => setIp(e.target.value)} inputMode="decimal" />
-      </Field>
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-2 text-[13px] font-medium text-text2">Access</legend>
-        {choices.map((choice) => (
+      <div className="flex flex-col gap-2">
+        <label htmlFor={`ip-${device.id}`} className="text-[13px] font-medium text-text2">
+          Static IP
+        </label>
+        <div className="flex gap-2">
+          <input
+            id={`ip-${device.id}`}
+            className={`${inputClass} font-mono`}
+            value={ip}
+            onChange={(e) => setIp(e.target.value)}
+            inputMode="decimal"
+            placeholder={group ? "next free address" : "choose a group first"}
+          />
+          <Button className="shrink-0 whitespace-nowrap" disabled={groupId === ""} onClick={() => groupId !== "" && void nextFree(groupId)}>
+            Next free
+          </Button>
+        </div>
+        <span className="text-xs text-faint">
+          {group
+            ? `${group.name} range ${octet(group.range_start)}–${octet(group.range_end)} · ${group.device_count} device${group.device_count === 1 ? "" : "s"} in the group`
+            : "The address comes from the group's range."}
+        </span>
+      </div>
+      <fieldset className="flex flex-col gap-2.5">
+        <legend className="mb-2.5 text-[13px] font-medium text-text2">Access</legend>
+        {CHOICES.map((option) => (
           <label
-            key={choice.value || "default"}
-            className="flex cursor-pointer items-start gap-3 rounded-lg border border-line2 p-3 has-[:checked]:border-accent has-[:checked]:bg-accent-soft"
+            key={option.value}
+            className={clsx(
+              "flex cursor-pointer items-start gap-3 rounded-[10px] border p-[13px]",
+              choice === option.value ? "border-accent bg-accent-soft" : "border-line2",
+            )}
           >
             <input
               type="radio"
               name={`access-${device.id}`}
-              className="mt-1 size-4 accent-[var(--accent)]"
-              checked={access === choice.value}
-              onChange={() => setAccess(choice.value)}
-              aria-label={choice.label.startsWith("Group default") ? "Group default" : choice.label}
+              className="mt-[3px] size-[18px] accent-[var(--accent)]"
+              checked={choice === option.value}
+              onChange={() => setAccess(option.value)}
+              aria-label={option.label}
             />
-            <span className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold">{choice.label}</span>
-              <span className="text-xs text-muted">{choice.hint}</span>
+            <span className="flex flex-col gap-[3px]">
+              <span className="text-[15px] font-semibold">{option.label}</span>
+              <span className="text-[13px] text-muted">{option.hint}</span>
             </span>
           </label>
         ))}
@@ -104,9 +160,14 @@ export function ApproveForm({ device, groups, onApproved }: { device: Device; gr
           {error}
         </p>
       )}
-      <Button type="submit" variant="primary" disabled={busy || groupId === ""}>
-        Approve and assign IP
-      </Button>
+      <div className="flex flex-wrap justify-end gap-3 border-t border-line pt-5">
+        <Button variant="danger" disabled={busy} onClick={() => void block()}>
+          Reject and block
+        </Button>
+        <Button type="submit" variant="primary" disabled={busy || (choice !== "blocked" && groupId === "")}>
+          {choice === "blocked" ? "Block device" : "Approve and assign IP"}
+        </Button>
+      </div>
     </form>
   );
 }

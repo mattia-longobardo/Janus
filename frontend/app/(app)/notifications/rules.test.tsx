@@ -16,7 +16,17 @@ describe("RulesTable", () => {
         onChange={onChange}
       />,
     );
-    await userEvent.click(screen.getByRole("checkbox", { name: "Known device offline by email" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Known device offline email" }));
     expect(onChange).toHaveBeenCalledWith({ event_type: "device.offline", label: "Known device offline", email: true, gotify: true });
+  });
+});
+
+describe("RulesTable hints", () => {
+  it("explains when an event is muted", () => {
+    render(
+      <RulesTable rules={[{ event_type: "device.offline", label: "Known device offline", email: false, gotify: true }]} onChange={vi.fn()} />,
+    );
+    expect(screen.getByText("Muted during maintenance windows")).toBeTruthy();
+    expect((screen.getByRole("checkbox", { name: "Known device offline Gotify" }) as HTMLInputElement).checked).toBe(true);
   });
 });

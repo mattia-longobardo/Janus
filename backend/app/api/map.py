@@ -8,9 +8,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Device, Link
+from app.models import Device, Link, Setting
 
 router = APIRouter(prefix="/api/map", tags=["map"])
+LAYOUT_KEY = "map.layout_version"
+LAYOUT_VERSION = 2
 
 
 class PositionIn(BaseModel):
@@ -34,7 +36,9 @@ def _link(link: Link) -> dict[str, Any]:
 @router.get("")
 def get_map(db: Session = Depends(get_db)) -> dict[str, Any]:
     placed = db.scalars(select(Device).where(Device.map_x.is_not(None), Device.map_y.is_not(None)))
+    row = db.get(Setting, LAYOUT_KEY)
     return {
+        "layout_version": row.value if row is not None else 1,
         "positions": [{"device_id": str(d.id), "x": d.map_x, "y": d.map_y} for d in placed],
         "links": [_link(link) for link in db.scalars(select(Link).order_by(Link.id))],
     }
@@ -48,6 +52,7 @@ def put_positions(body: Annotated[list[PositionIn], Body(max_length=1000)], db: 
         if device is not None:
             device.map_x, device.map_y = item.x, item.y
             updated += 1
+    db.merge(Setting(key=LAYOUT_KEY, value=LAYOUT_VERSION))
     db.commit()
     return {"updated": updated}
 

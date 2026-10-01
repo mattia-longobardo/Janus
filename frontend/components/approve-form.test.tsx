@@ -10,40 +10,62 @@ const json = (status: number, body: unknown) =>
 
 describe("ApproveForm", () => {
   const device = makeDevice({ id: "dev-1", name: "Unknown 00:53:40", dhcp_hostname: "pixel-7", access: "pending", group_id: null, static_ip: null });
-  const groups = [makeGroup({ id: 1, name: "People" }), makeGroup({ id: 2, name: "Power meters", range_start: "192.168.1.120", range_end: "192.168.1.129", default_access: "lan_only" })];
+  const groups = [
+    makeGroup({ id: 1, name: "People" }),
+    makeGroup({ id: 2, name: "Power meters", range_start: "192.168.1.120", range_end: "192.168.1.129", default_access: "lan_only" }),
+  ];
 
-  it("proposes the next free IP and posts the approval", async () => {
+  it("needs an explicit group, proposes the next free IP and posts the approval", async () => {
+    let free = "192.168.1.12";
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
       const url = String(input);
-      if (url.endsWith("/groups/1/next-free-ip")) return json(200, { ip: "192.168.1.12" });
+      if (url.endsWith("/groups/1/next-free-ip")) return json(200, { ip: free });
       if (url.endsWith("/devices/dev-1/approve")) return json(200, { device: { ...device, access: "authorized" }, enforcement: "dry-run" });
       throw new Error(`unexpected ${url} ${init?.method}`);
     });
     const onApproved = vi.fn();
     render(<ApproveForm device={device} groups={groups} onApproved={onApproved} />);
-    expect((screen.getByRole("button", { name: "Approve and assign IP" }) as HTMLButtonElement).disabled).toBe(true);
+    const submit = screen.getByRole("button", { name: "Approve and assign IP" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
     await userEvent.selectOptions(screen.getByLabelText("Group"), "1");
     const ip = screen.getByLabelText("Static IP") as HTMLInputElement;
     await waitFor(() => expect(ip.value).toBe("192.168.1.12"));
+    free = "192.168.1.13";
+    await userEvent.clear(ip);
+    await userEvent.click(screen.getByRole("button", { name: "Next free" }));
+    await waitFor(() => expect(ip.value).toBe("192.168.1.13"));
     const name = screen.getByLabelText("Name");
     await userEvent.clear(name);
     await userEvent.type(name, "PHONE_B");
-    await userEvent.click(screen.getByRole("button", { name: "Approve and assign IP" }));
+    await userEvent.click(submit);
     await waitFor(() => expect(onApproved).toHaveBeenCalled());
     const approveCall = fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/approve"))!;
-    expect(JSON.parse(String(approveCall[1]?.body))).toEqual({ name: "PHONE_B", group_id: 1, static_ip: "192.168.1.12" });
+    expect(JSON.parse(String(approveCall[1]?.body))).toEqual({ name: "PHONE_B", group_id: 1, static_ip: "192.168.1.13", access: "authorized" });
   });
 
-  it("sends an explicit access choice and shows backend errors", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+  it("follows the group's default access and shows backend errors", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.includes("next-free-ip")) return json(200, { ip: null });
-      return json(422, { detail: "no free IP left in group Power meters" });
+      if (url.includes("next-free-ip")) return json(200, { ip: "192.168.1.121" });
+      return json(422, { detail: "192.168.1.121 is already reserved" });
     });
     render(<ApproveForm device={device} groups={groups} onApproved={vi.fn()} />);
     await userEvent.selectOptions(screen.getByLabelText("Group"), "2");
-    await userEvent.click(screen.getByLabelText("LAN only"));
+    expect((screen.getByLabelText("LAN only") as HTMLInputElement).checked).toBe(true);
+    await waitFor(() => expect((screen.getByLabelText("Static IP") as HTMLInputElement).value).toBe("192.168.1.121"));
     await userEvent.click(screen.getByRole("button", { name: "Approve and assign IP" }));
-    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "no free IP left in group Power meters");
+    expect((await screen.findByRole("alert")).textContent).toBe("192.168.1.121 is already reserved");
+    const body = JSON.parse(String(fetchSpy.mock.calls.find(([url]) => String(url).endsWith("/approve"))![1]?.body));
+    expect(body.access).toBe("lan_only");
+  });
+
+  it("blocks when Block is chosen", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(json(200, { device: { ...device, access: "blocked" }, enforcement: "dry-run" }));
+    const onBlocked = vi.fn();
+    render(<ApproveForm device={device} groups={groups} onApproved={vi.fn()} onBlocked={onBlocked} />);
+    await userEvent.click(screen.getByLabelText("Block"));
+    await userEvent.click(screen.getByRole("button", { name: "Block device" }));
+    await waitFor(() => expect(onBlocked).toHaveBeenCalled());
+    expect(String(fetchSpy.mock.calls[0][0])).toBe("/api/devices/dev-1/block");
   });
 });

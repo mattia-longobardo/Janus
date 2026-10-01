@@ -17,7 +17,8 @@ describe("formatDateTime", () => {
 describe("relativeTime", () => {
   const now = Date.parse("2026-10-01T12:00:00Z");
   it.each([
-    ["2026-10-01T11:59:30Z", "now"],
+    ["2026-10-01T11:59:58Z", "now"],
+    ["2026-10-01T11:59:30Z", "30 s ago"],
     ["2026-10-01T11:45:00Z", "15 min ago"],
     ["2026-10-01T09:00:00Z", "3 h ago"],
     ["2026-09-28T12:00:00Z", "3 d ago"],

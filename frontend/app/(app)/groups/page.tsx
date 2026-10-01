@@ -1,31 +1,49 @@
 "use client";
 
 import clsx from "clsx";
-import { Activity, House, Monitor, Plus, Printer, Router, Server, Smartphone, Tv, Wifi, Zap } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
-import { Button, Card, Field, Notice, PageHeader, inputClass } from "@/components/ui";
+import { Button, Card, Checkbox, Field, IconTile, Notice, PageHeader, Segmented, inputClass } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
 import { ACCESS_LABELS } from "@/lib/format";
-import { rangeUsage } from "@/lib/ipplan";
+import { GROUP_ICONS, PENDING_COLOR, QuarantineIcon, iconFor } from "@/lib/group-icons";
+import { lastOctet, rangeUsage } from "@/lib/ipplan";
+import { useSettings } from "@/lib/settings-context";
 import type { Access, Device, Group } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
-const GROUP_ICONS = { device: Monitor, phone: Smartphone, home: House, zap: Zap, activity: Activity, tv: Tv, printer: Printer, server: Server, wifi: Wifi, router: Router };
 const PALETTE = ["#6FB7FF", "#B69CF0", "#E58FB8", "#5CC8A8", "#A6D86A", "#E0A84E", "#F0765C", "#9AA3A8"];
+const ROW = "grid grid-cols-[34px_1fr_90px_56px] items-center gap-3.5 px-4 sm:grid-cols-[34px_1fr_110px_60px_120px]";
+const HEAD = "text-xs font-medium uppercase tracking-[.06em] text-faint";
+
 type Draft = Omit<Group, "id" | "device_count">;
 const EMPTY: Draft = {
-  name: "", color: PALETTE[0], icon: "device", range_start: "", range_end: "", default_access: "authorized",
-  offline_alert_hours: null, scan_enabled: false, scan_interval_hours: 168,
+  name: "",
+  color: PALETTE[0],
+  icon: "device",
+  range_start: "",
+  range_end: "",
+  default_access: "authorized",
+  offline_alert_hours: null,
+  scan_enabled: false,
+  scan_interval_hours: 168,
 };
 
+function span(start: string, end: string): string {
+  return `.${lastOctet(start)}–.${lastOctet(end)}`;
+}
+
 export default function GroupsPage() {
+  const { settings } = useSettings();
   const groupsRes = useResource<Group[]>("/groups");
   const devicesRes = useResource<Device[]>("/devices");
   const [selected, setSelected] = useState<number | "new" | null>(null);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string }>();
   const groups = groupsRes.data ?? [];
+  const devices = devicesRes.data ?? [];
   const current = typeof selected === "number" ? groups.find((g) => g.id === selected) : undefined;
+  const pendingCount = devices.filter((d) => d.access === "pending").length;
 
   return (
     <>
@@ -40,44 +58,46 @@ export default function GroupsPage() {
         }
       />
       {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_1fr]">
+      {groupsRes.error && <Notice tone="error">{groupsRes.error}</Notice>}
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <Card className="overflow-hidden">
-          <ul>
-            {groups.map((g) => {
-              const Icon = GROUP_ICONS[g.icon as keyof typeof GROUP_ICONS] ?? Monitor;
-              const usage = rangeUsage(g, devicesRes.data ?? []);
-              return (
-                <li key={g.id}>
-                  <button
-                    type="button"
-                    aria-pressed={selected === g.id}
-                    onClick={() => setSelected(g.id)}
-                    className={clsx(
-                      "grid w-full grid-cols-[36px_1fr_auto] items-center gap-3 border-b border-row px-4 py-3 text-left sm:grid-cols-[36px_1fr_120px_110px]",
-                      selected === g.id && "bg-accent-soft",
-                    )}
-                  >
-                    <span className="flex size-9 items-center justify-center rounded-lg" style={{ background: `${g.color}26`, color: g.color }}>
-                      <Icon className="size-[18px]" aria-hidden />
-                    </span>
-                    <span className="flex flex-col">
-                      <span className="font-semibold">{g.name}</span>
-                      <span className="font-mono text-xs text-faint">
-                        {g.range_start}–{g.range_end.split(".")[3]} · {usage.used}/{usage.total}
-                      </span>
-                    </span>
-                    <span className="hidden text-[13px] text-muted sm:block">{ACCESS_LABELS[g.default_access]}</span>
-                    <span className="text-[13px] text-muted">{g.scan_enabled ? `scan ${g.scan_interval_hours} h` : "no scan"}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className={clsx(ROW, "border-b border-line py-3")}>
+            <span />
+            <span className={HEAD}>Group</span>
+            <span className={HEAD}>Range</span>
+            <span className={HEAD}>Devices</span>
+            <span className={clsx(HEAD, "hidden sm:block")}>Default access</span>
+          </div>
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              aria-pressed={selected === g.id}
+              onClick={() => setSelected(g.id)}
+              className={clsx(ROW, "w-full border-b border-row py-3 text-left text-text", selected === g.id ? "bg-accent-soft" : "hover:bg-card2")}
+            >
+              <IconTile Icon={iconFor(g.icon)} color={g.color} size={34} />
+              <span className="truncate text-[15px] font-semibold">{g.name}</span>
+              <span className="font-mono text-[13px] text-muted">{span(g.range_start, g.range_end)}</span>
+              <span className="font-mono text-[13px] text-text2">{g.device_count}</span>
+              <span className="hidden text-[13px] text-muted sm:block">{ACCESS_LABELS[g.default_access]}</span>
+            </button>
+          ))}
+          <div className={clsx(ROW, "py-3 text-text")} title="The DHCP pool for unknown devices, set in the server configuration">
+            <IconTile Icon={QuarantineIcon} color={PENDING_COLOR} size={34} />
+            <span className="text-[15px] font-semibold">Quarantine</span>
+            <span className="font-mono text-[13px] text-muted">{span(settings.network.quarantine_start, settings.network.quarantine_end)}</span>
+            <span className="font-mono text-[13px] text-text2">{pendingCount}</span>
+            <span className="hidden text-[13px] text-muted sm:block">Quarantine</span>
+          </div>
         </Card>
-        {selected !== null && (
+        {selected === null ? (
+          <Card className="p-6 text-sm text-muted">Select a group to edit it, or create a new one.</Card>
+        ) : (
           <GroupEditor
             key={selected}
             group={current}
+            devices={devices}
             onDone={async (text) => {
               setNotice({ tone: "success", text });
               setSelected(null);
@@ -91,12 +111,26 @@ export default function GroupsPage() {
   );
 }
 
-function GroupEditor({ group, onDone, onError }: { group?: Group; onDone: (text: string) => Promise<void>; onError: (text: string) => void }) {
+function GroupEditor({
+  group,
+  devices,
+  onDone,
+  onError,
+}: {
+  group?: Group;
+  devices: Device[];
+  onDone: (text: string) => Promise<void>;
+  onError: (text: string) => void;
+}) {
   const [draft, setDraft] = useState<Draft>(group ? { ...group } : EMPTY);
+  const [busy, setBusy] = useState(false);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }));
+  const usage = group ? rangeUsage(group, devices) : null;
+  const free = usage ? usage.total - usage.used : null;
 
   async function save(event: FormEvent) {
     event.preventDefault();
+    setBusy(true);
     try {
       if (group) {
         await api.patch(`/groups/${group.id}`, draft);
@@ -107,6 +141,8 @@ function GroupEditor({ group, onDone, onError }: { group?: Group; onDone: (text:
       }
     } catch (err) {
       onError(errorText(err));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -120,30 +156,47 @@ function GroupEditor({ group, onDone, onError }: { group?: Group; onDone: (text:
     }
   }
 
+  const rangeHint =
+    free === null || !group
+      ? undefined
+      : free <= 2
+        ? `${free} free · widen to .${Math.min(254, lastOctet(group.range_end) + 10)} to grow`
+        : `${free} free`;
+
   return (
-    <Card className="p-5 lg:p-6">
+    <Card className="p-6">
       <form onSubmit={save} className="flex flex-col gap-5">
-        <h2 className="font-display text-2xl font-bold">{group ? group.name : "New group"}</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-display text-[22px] font-bold">{group ? draft.name || group.name : "New group"}</h2>
+          {group && usage && (
+            <span className="font-mono text-xs text-faint">
+              {group.device_count} devices · {usage.used}/{usage.total} IPs used
+            </span>
+          )}
+        </div>
         <Field label="Name">
           <input className={inputClass} value={draft.name} onChange={(e) => set("name", e.target.value)} required maxLength={64} />
         </Field>
-        <fieldset>
-          <legend className="mb-2 text-[13px] font-medium text-text2">Colour</legend>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-2 text-[13px] font-medium text-text2">Color</legend>
           <div className="flex flex-wrap gap-2">
-            {PALETTE.map((color) => (
-              <button
-                key={color}
-                type="button"
-                aria-label={`Colour ${color}`}
-                aria-pressed={draft.color.toUpperCase() === color}
-                onClick={() => set("color", color)}
-                className={clsx("size-9 rounded-lg border", draft.color.toUpperCase() === color ? "border-[3px] border-text" : "border-line2")}
-                style={{ background: color }}
-              />
-            ))}
+            {PALETTE.map((color) => {
+              const active = draft.color.toUpperCase() === color;
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={`Color ${color}`}
+                  aria-pressed={active}
+                  onClick={() => set("color", color)}
+                  className={clsx("size-8 rounded-lg", active ? "border-[3px] border-text" : "border border-line2")}
+                  style={{ background: color }}
+                />
+              );
+            })}
           </div>
         </fieldset>
-        <fieldset>
+        <fieldset className="flex flex-col gap-2">
           <legend className="mb-2 text-[13px] font-medium text-text2">Icon</legend>
           <div className="flex flex-wrap gap-2">
             {Object.entries(GROUP_ICONS).map(([key, Icon]) => (
@@ -154,8 +207,8 @@ function GroupEditor({ group, onDone, onError }: { group?: Group; onDone: (text:
                 aria-pressed={draft.icon === key}
                 onClick={() => set("icon", key)}
                 className={clsx(
-                  "flex size-11 items-center justify-center rounded-lg border",
-                  draft.icon === key ? "border-accent bg-accent-soft" : "border-line2 bg-card",
+                  "flex size-10 items-center justify-center rounded-lg border text-text2",
+                  draft.icon === key ? "border-accent bg-accent-soft" : "border-line2 bg-card hover:text-text",
                 )}
               >
                 <Icon className="size-[18px]" aria-hidden />
@@ -167,40 +220,61 @@ function GroupEditor({ group, onDone, onError }: { group?: Group; onDone: (text:
           <Field label="Range start">
             <input className={`${inputClass} font-mono`} value={draft.range_start} onChange={(e) => set("range_start", e.target.value)} required />
           </Field>
-          <Field label="Range end">
+          <Field label="Range end" hint={rangeHint}>
             <input className={`${inputClass} font-mono`} value={draft.range_end} onChange={(e) => set("range_end", e.target.value)} required />
           </Field>
         </div>
-        <Field label="Default access for new members" hint="LAN only: no gateway, so the device reaches home devices but never the internet.">
-          <select className={inputClass} value={draft.default_access} onChange={(e) => set("default_access", e.target.value as Access)}>
-            <option value="authorized">{ACCESS_LABELS.authorized}</option>
-            <option value="lan_only">{ACCESS_LABELS.lan_only}</option>
-          </select>
-        </Field>
-        <Field label="Offline alert after (hours)" hint="Leave empty for no offline alerts.">
-          <input
-            className={`${inputClass} font-mono`}
-            type="number"
-            min={1}
-            value={draft.offline_alert_hours ?? ""}
-            onChange={(e) => set("offline_alert_hours", e.target.value ? Number(e.target.value) : null)}
-          />
-        </Field>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="flex min-h-11 items-center gap-3 text-sm text-text2">
-            <input type="checkbox" className="size-5 accent-[var(--accent)]" checked={draft.scan_enabled} onChange={(e) => set("scan_enabled", e.target.checked)} />
-            Scheduled port scans
-          </label>
-          <Field label="Scan every (hours)">
+        <div className="flex flex-col gap-2">
+          <span className="text-[13px] font-medium text-text2">Default access for new members</span>
+          <div>
+            <Segmented<Access>
+              label="Default access"
+              value={draft.default_access}
+              onChange={(value) => set("default_access", value)}
+              options={[
+                { value: "authorized", label: ACCESS_LABELS.authorized },
+                { value: "lan_only", label: ACCESS_LABELS.lan_only },
+              ]}
+            />
+          </div>
+          <span className="text-xs text-faint">
+            LAN only: the device gets no gateway, so it talks to home devices but never reaches the internet.
+          </span>
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-2.5 text-sm text-text2">
+            <Checkbox
+              aria-label="Offline alerts"
+              checked={draft.offline_alert_hours !== null}
+              onChange={(e) => set("offline_alert_hours", e.target.checked ? draft.offline_alert_hours ?? 24 : null)}
+            />
+            <span>Alert when a member is offline for more than</span>
             <input
-              className={`${inputClass} font-mono`}
+              aria-label="Offline hours"
+              type="number"
+              min={1}
+              disabled={draft.offline_alert_hours === null}
+              className={`${inputClass} h-9 w-[72px] font-mono disabled:opacity-50`}
+              value={draft.offline_alert_hours ?? ""}
+              onChange={(e) => set("offline_alert_hours", e.target.value ? Number(e.target.value) : 1)}
+            />
+            <span>h</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5 text-sm text-text2">
+            <Checkbox aria-label="Scheduled port scans" checked={draft.scan_enabled} onChange={(e) => set("scan_enabled", e.target.checked)} />
+            <span>Scan members for open ports every</span>
+            <input
+              aria-label="Scan interval hours"
               type="number"
               min={1}
               max={720}
+              disabled={!draft.scan_enabled}
+              className={`${inputClass} h-9 w-[80px] font-mono disabled:opacity-50`}
               value={draft.scan_interval_hours}
-              onChange={(e) => set("scan_interval_hours", Number(e.target.value))}
+              onChange={(e) => set("scan_interval_hours", Number(e.target.value) || 1)}
             />
-          </Field>
+            <span>h</span>
+          </div>
         </div>
         <div className="flex flex-wrap justify-between gap-3 border-t border-line pt-4">
           {group ? (
@@ -210,7 +284,7 @@ function GroupEditor({ group, onDone, onError }: { group?: Group; onDone: (text:
           ) : (
             <span />
           )}
-          <Button type="submit" variant="primary">
+          <Button type="submit" variant="primary" disabled={busy}>
             {group ? "Save changes" : "Create group"}
           </Button>
         </div>

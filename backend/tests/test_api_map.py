@@ -16,11 +16,13 @@ def pair(db):
 
 def test_positions_round_trip(client, pair):
     a, b = pair
-    assert client.get("/api/map").json() == {"positions": [], "links": []}
+    assert client.get("/api/map").json() == {"layout_version": 1, "positions": [], "links": []}
     body = client.put("/api/map/positions", json=[{"device_id": str(a.id), "x": 10.5, "y": -4},
                                                   {"device_id": str(uuid.uuid4()), "x": 1, "y": 1}]).json()
     assert body == {"updated": 1}
-    assert client.get("/api/map").json()["positions"] == [{"device_id": str(a.id), "x": 10.5, "y": -4.0}]
+    body = client.get("/api/map").json()
+    assert body["positions"] == [{"device_id": str(a.id), "x": 10.5, "y": -4.0}]
+    assert body["layout_version"] == 2
 
 
 def test_links(client, pair):

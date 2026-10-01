@@ -18,7 +18,8 @@ export function formatDateTime(iso: string | null | undefined, timeZone: string,
 export function relativeTime(iso: string | null | undefined, now: number = Date.now()): string {
   if (!iso) return "never";
   const seconds = Math.max(0, (now - Date.parse(iso)) / 1000);
-  if (seconds < 90) return "now";
+  if (seconds < 5) return "now";
+  if (seconds < 90) return `${Math.round(seconds)} s ago`;
   if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
   if (seconds < 172_800) return `${Math.round(seconds / 3600)} h ago`;
   return `${Math.round(seconds / 86_400)} d ago`;

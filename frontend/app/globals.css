@@ -127,8 +127,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: inherit;
+@layer base {
+  a {
+    color: inherit;
+  }
 }
 
 :focus-visible {
