@@ -81,7 +81,17 @@ def _check_conflict(db: Session, device: Device, ip: str, previous_ip: str | Non
     ))
     if rival is None or _recent(db, "ip.conflict", now - REPEAT_GAP, ip=ip):
         return
-    record_event(db, "ip.conflict", device.mac, {"ip": ip, "macs": sorted([device.mac, rival.mac])}, ts=now)
+    owner, claimant = device, rival
+    if rival.static_ip == ip and device.static_ip != ip:
+        owner, claimant = rival, device
+
+    def who(d: Device) -> dict[str, str | None]:
+        return {"name": d.name, "mac": d.mac, "device_id": str(d.id)}
+
+    record_event(db, "ip.conflict", claimant.mac, {
+        "ip": ip, "macs": sorted([device.mac, rival.mac]), "owner": who(owner), "claimant": who(claimant),
+        "reserved": owner.static_ip == ip,
+    }, ts=now)
 
 
 def _check_mismatch(db: Session, device: Device, ip: str, previous_ip: str | None, plan: NetworkPlan,

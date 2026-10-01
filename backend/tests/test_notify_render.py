@@ -35,6 +35,15 @@ def test_infra_messages_name_the_service():
 
 def test_conflict_mismatch_private_and_test():
     assert _render("ip.conflict", {"ip": "192.168.1.10", "macs": ["A", "B"]}).body == "Claimed by A, B"
+    conflict = _render("ip.conflict", {
+        "ip": "192.168.1.155", "reserved": True,
+        "claimant": {"name": "TV_KITCHEN", "mac": "00:00:5E:00:53:70", "device_id": "k"},
+        "owner": {"name": "TV_SALA", "mac": "00:00:5E:00:53:71", "device_id": "s"},
+    })
+    assert conflict.title == "TV_KITCHEN is trying to take 192.168.1.155"
+    assert conflict.body == ("TV_KITCHEN (00:00:5E:00:53:70) is trying to take 192.168.1.155, "
+                             "which is assigned to TV_SALA (00:00:5E:00:53:71).")
+    assert conflict.url.endswith("/devices/k")
     mismatch = _render("device.ip_mismatch", {"device_id": "d", "ip": "192.168.1.17", "expected": "192.168.1.10"}, name="LAPTOP")
     assert (mismatch.title, mismatch.body) == ("LAPTOP is using 192.168.1.17", "Its reserved address is 192.168.1.10")
     private = _render("device.private_mac", {"device_id": "d", "previous_name": "LAPTOP", "previous_mac": "M"}, name="new")

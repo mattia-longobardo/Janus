@@ -13,6 +13,9 @@ describe("describeEvent", () => {
     [event("sync.applied", { added: ["a", "b"], removed: ["c"] }), "Pi-hole reservations: +2 −1"],
     [event("security.risky_service", { ports: [{ port: 23 }, { port: 21 }] }), "Risky services on ports 23, 21"],
     [event("infra.down", { service: "pihole" }), "Pi-hole unreachable"],
+    [event("ip.conflict", { ip: "192.168.1.155", reserved: true, claimant: { name: "TV_KITCHEN", mac: "00:00:5E:00:53:70" }, owner: { name: "TV_SALA", mac: "00:00:5E:00:53:71" } }),
+      "TV_KITCHEN (00:00:5E:00:53:70) tried to take 192.168.1.155, assigned to TV_SALA (00:00:5E:00:53:71)"],
+    [event("ip.conflict", { ip: "192.168.1.10" }), "IP conflict on 192.168.1.10"],
     [event("maintenance.start"), "Maintenance window started"],
     [event("something.else"), "something.else"],
   ])("%j", (input, expected) => {
