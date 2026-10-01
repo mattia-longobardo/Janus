@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { CustomColor } from "@/components/custom-color";
 import { Button, Card, Checkbox, Field, IconTile, Notice, PageHeader, Segmented, inputClass } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
 import { ACCESS_LABELS } from "@/lib/format";
@@ -194,6 +195,7 @@ function GroupEditor({
                 />
               );
             })}
+            <CustomColor value={draft.color} palette={PALETTE} onChange={(color) => set("color", color)} />
           </div>
         </fieldset>
         <fieldset className="flex flex-col gap-2">
@@ -292,3 +294,4 @@ function GroupEditor({
     </Card>
   );
 }
+
