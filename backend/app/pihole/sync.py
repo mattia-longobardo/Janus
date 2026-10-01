@@ -4,8 +4,9 @@ from typing import Protocol
 from sqlalchemy.orm import Session
 
 from app.events import record_event
+from app.net.mac import normalize_mac
 from app.pihole.client import PiholeError
-from app.pihole.reservations import HostDiff, desired_hosts, diff_hosts, managed_macs
+from app.pihole.reservations import HostDiff, desired_hosts, diff_hosts, managed_macs, remember_written, written_macs
 
 
 class HostStore(Protocol):
@@ -15,7 +16,8 @@ class HostStore(Protocol):
 
 
 def plan_sync(db: Session, client: HostStore, lease: str) -> HostDiff:
-    return diff_hosts(desired_hosts(db, lease), client.list_hosts(), managed_macs(db))
+    current = client.list_hosts()
+    return diff_hosts(desired_hosts(db, lease), current, managed_macs(db, current, lease))
 
 
 def _write(operation: Callable[[str], None], line: str, diff: HostDiff) -> bool:
@@ -42,6 +44,8 @@ def apply_sync(db: Session, client: HostStore, lease: str) -> HostDiff:
             if _write(client.add_host, line, diff):
                 added.append(line)
     finally:
+        if added:
+            remember_written(db, (written_macs(db) or set()) | {normalize_mac(line.split(",")[0]) for line in added})
         if added or removed:
             record_event(db, "sync.applied", None, {"added": added, "removed": removed})
         if diff.failed:

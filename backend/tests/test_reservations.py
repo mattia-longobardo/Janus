@@ -126,7 +126,7 @@ def test_foreign_host_lines_are_reported_not_removed(db):
     g = _group(db)
     _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.10")
     _device(db, g, "BANNED", "00:00:5E:00:53:22", "192.168.1.13", Access.blocked)
-    foreign = "00:00:5e:00:53:99,192.168.1.200,someone-elses-nas,24h"
+    foreign = "00:00:5E:00:53:99,192.168.1.200,someone-elses-nas"
     blocked = "00:00:5e:00:53:22,192.168.1.13,banned,24h"
     fake = FakePihole(["00:00:5e:00:53:10,192.168.1.10,laptop-a,24h", foreign, blocked])
     diff = plan_sync(db, fake, "24h")
@@ -134,3 +134,41 @@ def test_foreign_host_lines_are_reported_not_removed(db):
     assert diff.unmanaged == [foreign]
     apply_sync(db, fake, "24h")
     assert foreign in fake.hosts and blocked not in fake.hosts
+
+
+def test_deleted_device_reservation_is_removed_before_its_ip_is_reused(db):
+    g = _group(db)
+    old = _device(db, g, "A53_CINZIA", "00:00:5E:00:53:61", "192.168.1.11")
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.10")
+    fake = FakePihole([])
+    apply_sync(db, fake, "24h")
+    assert "00:00:5e:00:53:61,192.168.1.11,a53-cinzia,24h" in fake.hosts
+    db.delete(old)
+    db.flush()
+    _device(db, g, "PHONE_CINZIA", "00:00:5E:00:53:62", "192.168.1.11")
+    diff = apply_sync(db, fake, "24h")
+    assert diff.failed == []
+    assert sorted(fake.hosts) == ["00:00:5e:00:53:10,192.168.1.10,laptop-a,24h",
+                                  "00:00:5e:00:53:62,192.168.1.11,phone-cinzia,24h"]
+    assert [kind for kind, _ in fake.writes[-2:]] == ["remove", "add"]
+
+
+def test_addition_that_would_duplicate_an_ip_is_skipped_not_written(db):
+    g = _group(db)
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.10")
+    manual = "00:00:5E:00:53:99,192.168.1.10,someone-elses-nas"
+    fake = FakePihole([manual])
+    diff = apply_sync(db, fake, "24h")
+    assert fake.hosts == [manual]
+    assert len(diff.failed) == 1 and "would duplicate" in diff.failed[0]
+
+
+def test_existing_janus_lines_are_recognised_on_first_run(db):
+    g = _group(db)
+    _device(db, g, "LAPTOP_A", "00:00:5E:00:53:10", "192.168.1.10")
+    gone = "00:00:5e:00:53:44,192.168.1.14,old-phone,24h"
+    manual = "00:00:5E:00:53:99,192.168.1.200,nas"
+    fake = FakePihole(["00:00:5e:00:53:10,192.168.1.10,laptop-a,24h", gone, manual])
+    diff = plan_sync(db, fake, "24h")
+    assert diff.to_remove == [gone]
+    assert diff.unmanaged == [manual]

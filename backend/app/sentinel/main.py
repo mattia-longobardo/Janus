@@ -6,11 +6,13 @@ from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import SessionLocal
+from app.dnscheck import dns_answers
 from app.models import Setting
 from app.net.ipplan import NetworkPlan
 from app.netconfig import load_with, restart_needed
@@ -65,9 +67,16 @@ def flush(packets: Iterable[Any], plan: NetworkPlan, session_factory: SessionFac
     return recorded
 
 
-def write_heartbeat(session_factory: SessionFactory, path: Path, now: datetime) -> None:
+DNS_OK_KEY = "pihole_dns.last_ok"
+
+
+def write_heartbeat(session_factory: SessionFactory, path: Path, now: datetime,
+                    dns_probe: Callable[[], bool] | None = None) -> None:
+    """Record the sweep, and when Pi-hole last answered DNS (probed from the host network, like the LAN)."""
     with session_factory() as db:
         db.merge(Setting(key=HEARTBEAT_KEY, value=now.isoformat()))
+        if dns_probe is not None and dns_probe():
+            db.merge(Setting(key=DNS_OK_KEY, value=now.isoformat()))
         db.commit()
     path.touch()
 
@@ -87,6 +96,7 @@ def main() -> None:
     cfg = load_with(SessionLocal)
     plan = cfg.plan()
     heartbeat = Path(settings.sentinel_heartbeat_path)
+    dns_host = urlparse(cfg.pihole_url).hostname or "127.0.0.1"
     packets: queue.Queue[Any] = queue.Queue(maxsize=MAX_QUEUE)
     enqueue = Enqueuer(packets)
     sniffer = AsyncSniffer(iface=cfg.sentinel_interface, filter=FILTER, prn=enqueue, store=False)
@@ -105,7 +115,7 @@ def main() -> None:
         if time.monotonic() >= next_sweep:
             try:
                 batch.extend(sweep(cfg.sentinel_interface, cfg.subnet))
-                write_heartbeat(SessionLocal, heartbeat, datetime.now(UTC))
+                write_heartbeat(SessionLocal, heartbeat, datetime.now(UTC), dns_probe=lambda: dns_answers(dns_host))
             except Exception:
                 log.exception("ARP sweep failed")
             next_sweep = time.monotonic() + cfg.sweep_interval_s

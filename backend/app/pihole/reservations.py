@@ -1,10 +1,11 @@
 from dataclasses import dataclass, field
+from ipaddress import IPv4Address
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Access, Device
+from app.models import Access, Device, Setting
 from app.net.mac import normalize_mac
 
 LAN_ONLY_TAG = "set:lanonly"
@@ -74,12 +75,39 @@ def desired_hosts(db: Session, lease: str) -> set[HostLine]:
     }
 
 
-def managed_macs(db: Session) -> set[str]:
-    return set(db.scalars(select(Device.mac).where(Device.mac.is_not(None))))
+WRITTEN_KEY = "pihole.written_macs"
+
+
+def written_macs(db: Session) -> set[str] | None:
+    row = db.get(Setting, WRITTEN_KEY)
+    return set(row.value) if row is not None and isinstance(row.value, list) else None
+
+
+def remember_written(db: Session, macs: set[str]) -> None:
+    db.merge(Setting(key=WRITTEN_KEY, value=sorted(macs)))
+
+
+def managed_macs(db: Session, current_raw: list[str] | None = None, lease: str | None = None) -> set[str]:
+    """MACs Janus manages: every device it knows plus every MAC it has ever written to Pi-hole, so the
+    reservation of a deleted device is removed too. Before anything is recorded, lines in Janus' exact
+    format (lower-case MAC, configured lease) are recognised as Janus' own."""
+    known = set(db.scalars(select(Device.mac).where(Device.mac.is_not(None))))
+    written = written_macs(db)
+    if written is None:
+        written = set()
+        for raw in current_raw or []:
+            parsed = HostLine.parse(raw)
+            if parsed is not None and parsed.render() == raw and (lease is None or parsed.lease == lease):
+                written.add(parsed.mac)
+        remember_written(db, written)
+    return known | written
 
 
 def diff_hosts(desired: set[HostLine], current_raw: list[str], managed: set[str] | None = None) -> HostDiff:
-    """Lines whose MAC Janus does not know are someone else's: reported as unmanaged, never removed."""
+    """Lines Janus does not manage (MAC neither known nor written by Janus) are reported, never removed.
+
+    An addition that would give Pi-hole two reservations with the same IP or MAC is refused and reported in
+    `failed`: dnsmasq rejects such a configuration and stops answering DNS."""
     current: dict[HostLine, str] = {}
     diff = HostDiff()
     for raw in current_raw:
@@ -88,6 +116,39 @@ def diff_hosts(desired: set[HostLine], current_raw: list[str], managed: set[str]
             diff.unmanaged.append(raw)
         else:
             current[parsed] = raw
-    diff.to_add = sorted(desired - current.keys())
     diff.to_remove = sorted(raw for parsed, raw in current.items() if parsed not in desired)
+    kept = [raw for parsed, raw in current.items() if parsed in desired] + diff.unmanaged
+    taken_ips: dict[str, str] = {}
+    taken_macs: dict[str, str] = {}
+    for raw in kept:
+        mac, ip = _identity(raw)
+        if ip:
+            taken_ips[ip] = raw
+        if mac:
+            taken_macs[mac] = raw
+    for host in sorted(desired - current.keys()):
+        clash = taken_ips.get(host.ip) or taken_macs.get(host.mac)
+        if clash is not None:
+            diff.failed.append(f"{host.render()}: would duplicate {clash} in Pi-hole, skipped")
+            continue
+        diff.to_add.append(host)
+        taken_ips[host.ip] = taken_macs[host.mac] = host.render()
     return diff
+
+
+def _identity(raw: str) -> tuple[str | None, str | None]:
+    """MAC and IPv4 address of any dhcp-host style line, whatever its other fields."""
+    mac = ip = None
+    for part in (p.strip() for p in raw.split(",")):
+        if mac is None:
+            try:
+                mac = normalize_mac(part)
+                continue
+            except ValueError:
+                pass
+        if ip is None:
+            try:
+                ip = str(IPv4Address(part))
+            except ValueError:
+                pass
+    return mac, ip

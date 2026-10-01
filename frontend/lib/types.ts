@@ -132,6 +132,7 @@ export interface AppSettings {
   source?: Partial<Record<NetworkField, "env" | "custom">>;
   status: {
     pihole_down_since: string | null;
+    dns_down_since: string | null;
     sentinel_down_since: string | null;
     last_sweep_at: string | null;
     maintenance_active: boolean;
