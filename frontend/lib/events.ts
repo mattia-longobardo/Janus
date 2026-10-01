@@ -8,7 +8,7 @@ export const EVENT_TYPES = [
   "maintenance.end", "notify.test", "notify.failed", "import.csv",
 ];
 
-const SERVICES: Record<string, string> = { pihole: "Pi-hole", sentinel: "Scanner" };
+const SERVICES: Record<string, string> = { pihole: "Pi-hole", pihole_dns: "Pi-hole DNS", sentinel: "Scanner" };
 
 export function describeEvent(event: Pick<EventItem, "type" | "payload">): string {
   const p = event.payload as Record<string, any>;

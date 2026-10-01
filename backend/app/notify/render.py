@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from app.models import Event
 from app.notify.catalog import CATALOG
 
-SERVICE_NAMES = {"pihole": "Pi-hole", "sentinel": "Scanner"}
+SERVICE_NAMES = {"pihole": "Pi-hole", "pihole_dns": "Pi-hole DNS", "sentinel": "Scanner"}
 ACCESS_NAMES = {"authorized": "full network", "lan_only": "LAN only"}
 
 

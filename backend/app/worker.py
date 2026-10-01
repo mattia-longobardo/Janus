@@ -72,6 +72,28 @@ def reconcile_once(
         return diff
 
 
+DNS_OK_KEY = "pihole_dns.last_ok"
+DNS_MAX_SILENCE = timedelta(minutes=3)
+
+
+def dns_check_once(session_factory: SessionFactory, now: datetime | None = None) -> bool | None:
+    """Pi-hole DNS is down when the sentinel (host network, like every LAN device) has not had an answer for
+    three minutes. Before the sentinel has recorded any answer there is nothing to judge."""
+    with session_factory() as db:
+        now = now or datetime.now(UTC)
+        row = db.get(Setting, DNS_OK_KEY)
+        if row is None or not row.value:
+            return None
+        silence = now - datetime.fromisoformat(row.value)
+        ok = silence <= DNS_MAX_SILENCE
+        if ok:
+            _mark_up(db, "pihole_dns")
+        else:
+            _mark_down(db, "pihole_dns", f"no DNS answer from Pi-hole for {int(silence.total_seconds())} s")
+        db.commit()
+        return ok
+
+
 def check_sentinel(db: Session, now: datetime, max_age: timedelta) -> bool:
     row = db.get(Setting, SENTINEL_HEARTBEAT_KEY)
     if row is None or not row.value:
@@ -134,6 +156,7 @@ def main() -> None:
             SessionLocal, lambda: PiholeClient(load_with(SessionLocal).pihole_url, settings.pihole_password),
             lease=settings.reservation_lease)),
         ("presence", settings.presence_interval_s, lambda: presence_once(SessionLocal)),
+        ("dns", 60, lambda: dns_check_once(SessionLocal)),
         ("dispatch", settings.dispatch_interval_s, lambda: dispatch_once(SessionLocal, senders, debouncer)),
         ("identity", settings.identity_interval_s, lambda: identity_once(SessionLocal)),
     ]

@@ -62,6 +62,7 @@ def _view(db: Session) -> dict[str, Any]:
         "source": sources(db),
         "status": {
             "pihole_down_since": _setting(db, "pihole.down_since"),
+            "dns_down_since": _setting(db, "pihole_dns.down_since"),
             "sentinel_down_since": _setting(db, "sentinel.down_since"),
             "last_sweep_at": _setting(db, "sentinel.heartbeat"),
             "maintenance_active": bool(_setting(db, "maintenance.active")),

@@ -24,5 +24,5 @@ def test_settings_report_infrastructure_status(client, db):
                 Setting(key="sentinel.heartbeat", value="2026-10-01T10:00:00+00:00")])
     db.flush()
     status = client.get("/api/settings").json()["status"]
-    assert status == {"pihole_down_since": "2026-10-01T05:00:00+00:00", "sentinel_down_since": None,
+    assert status == {"pihole_down_since": "2026-10-01T05:00:00+00:00", "dns_down_since": None, "sentinel_down_since": None,
                       "last_sweep_at": "2026-10-01T10:00:00+00:00", "maintenance_active": False}

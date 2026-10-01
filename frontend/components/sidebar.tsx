@@ -47,7 +47,9 @@ export function Sidebar({ open, onClose, user }: { open: boolean; onClose: () =>
   const { data: windows } = useResource<MaintenanceWindow[]>("/maintenance-windows");
   const maint = windows?.find((w) => w.enabled);
   const { status } = settings;
-  const pihole = status.pihole_down_since
+  const pihole = status.dns_down_since
+    ? { tone: "bg-bad", text: "Pi-hole DNS down" }
+    : status.pihole_down_since
     ? { tone: "bg-bad", text: "Pi-hole unreachable" }
     : settings.sync_mode === "apply"
       ? { tone: "bg-ok", text: "Pi-hole DHCP · active" }
