@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import { CompactGroup } from "@/components/compact-group";
 import { CustomColor } from "@/components/custom-color";
 import { Button, Card, Checkbox, Field, IconTile, Notice, PageHeader, Segmented, inputClass } from "@/components/ui";
 import { api, errorText } from "@/lib/api";
@@ -226,6 +227,9 @@ function GroupEditor({
             <input className={`${inputClass} font-mono`} value={draft.range_end} onChange={(e) => set("range_end", e.target.value)} required />
           </Field>
         </div>
+        {group && (
+          <CompactGroup group={group} onDone={(text) => void onDone(text)} onError={onError} />
+        )}
         <div className="flex flex-col gap-2">
           <span className="text-[13px] font-medium text-text2">Default access for new members</span>
           <div>
