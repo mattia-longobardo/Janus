@@ -45,3 +45,9 @@ def test_migration_seeds_default_window_and_rules():
         rules = conn.execute(text("SELECT event_type, channel, enabled FROM notification_rules ORDER BY event_type, channel")).all()
         expected = sorted((r["event_type"], r["channel"], r["enabled"]) for r in default_rule_rows())
         assert [tuple(r) for r in rules] == expected
+
+
+def test_sightings_have_lookup_index():
+    with _migrated("migindex") as conn:
+        names = {row[0] for row in conn.execute(text("SELECT indexname FROM pg_indexes WHERE tablename = 'sightings'"))}
+        assert "ix_sightings_mac_source_ts" in names

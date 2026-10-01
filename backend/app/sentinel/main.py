@@ -17,7 +17,7 @@ from app.sentinel.observe import observe
 from app.sentinel.record import record_observation
 
 log = logging.getLogger("janus.sentinel")
-FILTER = "arp or (udp and (port 67 or port 68))"
+FILTER = "arp or (udp and (port 67 or port 68 or port 137 or port 1900)) or (udp port 5353 and udp[10] & 0x80 != 0)"
 HEARTBEAT_KEY = "sentinel.heartbeat"
 MAX_QUEUE = 5000
 SessionFactory = Callable[[], AbstractContextManager[Session]]

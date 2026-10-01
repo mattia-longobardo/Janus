@@ -11,6 +11,9 @@ case "${1:-api}" in
   sentinel)
     exec /usr/local/bin/janus-sniff -m app.sentinel.main
     ;;
+  scanner)
+    exec python -m app.intel.scanner
+    ;;
   *)
     exec "$@"
     ;;

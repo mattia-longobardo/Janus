@@ -70,6 +70,16 @@ class PiholeClient:
     def list_leases(self) -> list[dict[str, Any]]:
         return self._request("GET", "/api/dhcp/leases").json()["leases"]
 
+    def list_queries(
+        self, client_ip: str, since: int, until: int, length: int = 5000, disk: bool = False
+    ) -> tuple[list[dict[str, Any]], int]:
+        params: dict[str, Any] = {"client_ip": client_ip, "from": since, "until": until, "length": length}
+        if disk:
+            params["disk"] = "true"
+        body = self._request("GET", "/api/queries", params=params).json()
+        queries = body["queries"]
+        return queries, int(body.get("recordsFiltered", len(queries)))
+
     def revoke_lease(self, ip: str) -> None:
         self._request("DELETE", f"/api/dhcp/leases/{ip}")
 

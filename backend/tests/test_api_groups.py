@@ -21,7 +21,8 @@ def test_create_and_list_group(client):
     created = client.post("/api/groups", json=PEOPLE)
     assert created.status_code == 201
     body = client.get("/api/groups").json()
-    assert body == [{**PEOPLE, "id": created.json()["id"], "offline_alert_hours": None, "device_count": 0}]
+    assert body == [{**PEOPLE, "id": created.json()["id"], "offline_alert_hours": None, "device_count": 0,
+                     "scan_enabled": False, "scan_interval_hours": 168}]
 
 
 def test_create_rejects_overlap_quarantine_duplicate_and_bad_access(client):
@@ -80,3 +81,11 @@ def test_patch_group_can_clear_offline_threshold(client):
     gid = client.post("/api/groups", json={**PEOPLE, "offline_alert_hours": 6}).json()["id"]
     response = client.patch(f"/api/groups/{gid}", json={"offline_alert_hours": None})
     assert response.status_code == 200 and response.json()["offline_alert_hours"] is None
+
+
+def test_patch_scan_settings(client):
+    gid = client.post("/api/groups", json=PEOPLE).json()["id"]
+    body = client.patch(f"/api/groups/{gid}", json={"scan_enabled": True, "scan_interval_hours": 24}).json()
+    assert (body["scan_enabled"], body["scan_interval_hours"]) == (True, 24)
+    assert client.patch(f"/api/groups/{gid}", json={"scan_interval_hours": 0}).status_code == 422
+    assert client.patch(f"/api/groups/{gid}", json={"scan_enabled": None}).status_code == 422

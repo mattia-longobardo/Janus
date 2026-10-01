@@ -33,6 +33,7 @@ class DeviceOut(BaseModel):
     dhcp_hostname: str | None
     first_seen: datetime | None
     last_seen: datetime | None
+    last_scan_at: datetime | None
 
     model_config = {"from_attributes": True}
 

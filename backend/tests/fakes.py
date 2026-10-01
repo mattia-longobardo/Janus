@@ -11,6 +11,7 @@ class FakePihole:
         self.reject = reject or set()
         self.drop_after_writes = drop_after_writes
         self.writes: list[tuple[str, str]] = []
+        self.queries: list[dict] = []
 
     def _write(self, kind: str, line: str) -> None:
         if self.drop_after_writes is not None and len(self.writes) >= self.drop_after_writes:
@@ -39,6 +40,14 @@ class FakePihole:
     def remove_host(self, line: str) -> None:
         self._write("remove", line)
         self.hosts.remove(line)
+
+    def list_queries(self, client_ip: str, since: int, until: int, length: int = 5000,
+                     disk: bool = False) -> tuple[list[dict], int]:
+        if self.fail:
+            raise PiholeError("Pi-hole unreachable: connection refused")
+        self.last_query = {"client_ip": client_ip, "since": since, "until": until, "length": length, "disk": disk}
+        matches = [q for q in self.queries if q["client"]["ip"] == client_ip and since <= q["time"] <= until]
+        return matches[:length], getattr(self, "reported_total", len(matches))
 
     def revoke_lease(self, ip: str) -> None:
         self._write("revoke", ip)
