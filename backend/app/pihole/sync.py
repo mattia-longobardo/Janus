@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.events import record_event
 from app.pihole.client import PiholeError
-from app.pihole.reservations import HostDiff, desired_hosts, diff_hosts
+from app.pihole.reservations import HostDiff, desired_hosts, diff_hosts, managed_macs
 
 
 class HostStore(Protocol):
@@ -15,7 +15,7 @@ class HostStore(Protocol):
 
 
 def plan_sync(db: Session, client: HostStore, lease: str) -> HostDiff:
-    return diff_hosts(desired_hosts(db, lease), client.list_hosts())
+    return diff_hosts(desired_hosts(db, lease), client.list_hosts(), managed_macs(db))
 
 
 def _write(operation: Callable[[str], None], line: str, diff: HostDiff) -> bool:

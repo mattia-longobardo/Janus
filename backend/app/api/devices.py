@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.conflicts import commit_or_409
 from app.api.groups import plan
 from app.db import get_db
 from app.events import record_event
@@ -148,7 +149,7 @@ def update_device(device_id: uuid.UUID, body: DevicePatch, db: Session = Depends
 
     if changes:
         record_event(db, "device.updated", device.mac, {"changes": changes})
-    db.commit()
+    commit_or_409(db, "another device already uses that name or address: reload and try again")
     return device
 
 

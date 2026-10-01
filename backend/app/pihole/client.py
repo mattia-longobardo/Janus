@@ -91,8 +91,27 @@ class PiholeClient:
             )
         return response
 
+    def _json(self, method: str, path: str, **kwargs: Any) -> Any:
+        response = self._request(method, path, **kwargs)
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise PiholeError(
+                f"{method} {path}: reply is not valid JSON ({response.text[:80]!r})", status=response.status_code
+            ) from exc
+
+    def _field(self, body: Any, path: str, *keys: str) -> Any:
+        value = body
+        try:
+            for key in keys:
+                value = value[key]
+        except (KeyError, TypeError, IndexError) as exc:
+            raise PiholeError(f"GET {path}: unexpected reply, missing {'.'.join(keys)}") from exc
+        return value
+
     def list_hosts(self) -> list[str]:
-        return self._request("GET", "/api/config/dhcp/hosts").json()["config"]["dhcp"]["hosts"]
+        path = "/api/config/dhcp/hosts"
+        return self._field(self._json("GET", path), path, "config", "dhcp", "hosts")
 
     def add_host(self, line: str) -> None:
         self._request("PUT", "/api/config/dhcp/hosts/" + quote(line, safe=""))
@@ -101,7 +120,7 @@ class PiholeClient:
         self._request("DELETE", "/api/config/dhcp/hosts/" + quote(line, safe=""))
 
     def list_leases(self) -> list[dict[str, Any]]:
-        return self._request("GET", "/api/dhcp/leases").json()["leases"]
+        return self._field(self._json("GET", "/api/dhcp/leases"), "/api/dhcp/leases", "leases")
 
     def list_queries(
         self, client_ip: str, since: int, until: int, length: int = 5000, disk: bool = False
@@ -109,8 +128,8 @@ class PiholeClient:
         params: dict[str, Any] = {"client_ip": client_ip, "from": since, "until": until, "length": length}
         if disk:
             params["disk"] = "true"
-        body = self._request("GET", "/api/queries", params=params).json()
-        queries = body["queries"]
+        body = self._json("GET", "/api/queries", params=params)
+        queries = self._field(body, "/api/queries", "queries")
         return queries, int(body.get("recordsFiltered", len(queries)))
 
     def revoke_lease(self, ip: str) -> None:

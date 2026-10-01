@@ -74,12 +74,17 @@ def desired_hosts(db: Session, lease: str) -> set[HostLine]:
     }
 
 
-def diff_hosts(desired: set[HostLine], current_raw: list[str]) -> HostDiff:
+def managed_macs(db: Session) -> set[str]:
+    return set(db.scalars(select(Device.mac).where(Device.mac.is_not(None))))
+
+
+def diff_hosts(desired: set[HostLine], current_raw: list[str], managed: set[str] | None = None) -> HostDiff:
+    """Lines whose MAC Janus does not know are someone else's: reported as unmanaged, never removed."""
     current: dict[HostLine, str] = {}
     diff = HostDiff()
     for raw in current_raw:
         parsed = HostLine.parse(raw)
-        if parsed is None:
+        if parsed is None or (managed is not None and parsed.mac not in managed):
             diff.unmanaged.append(raw)
         else:
             current[parsed] = raw

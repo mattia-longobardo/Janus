@@ -73,3 +73,23 @@ def test_import_rename_regenerates_hostname(db):
     import_csv(db, renamed, PLAN)
     device = db.scalar(select(Device).where(Device.mac == "00:00:5E:00:53:10"))
     assert (device.name, device.hostname) == ("LAPTOP_WORK", "laptop-work")
+
+
+def test_over_long_fields_are_skipped_not_crashing(db):
+    from app.config import Settings
+    from app.importer import import_csv
+    from app.net.ipplan import NetworkPlan
+
+    plan = NetworkPlan.from_settings(Settings())
+    long_name = "N" * 65
+    long_group = "G" * 65
+    text = (
+        "Name,MAC Address,LAN IP,Category\n"
+        f"{long_name},00:00:5E:00:53:70,192.168.1.10,People\n"
+        f"OK_PHONE,00:00:5E:00:53:71,192.168.1.11,People\n"
+        f"OTHER,00:00:5E:00:53:72,192.168.1.150,{long_group}\n"
+    )
+    report = import_csv(db, text, plan)
+    assert report.devices_created == 1
+    assert any("longer than 64" in s for s in report.skipped)
+    assert any(long_group[:10] in s and "longer than 64" in s for s in report.skipped)

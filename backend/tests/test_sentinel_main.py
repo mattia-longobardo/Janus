@@ -58,3 +58,24 @@ def test_sniffer_alive():
     assert not sniffer_alive(Sniffer(True, Thread(False)))
     assert not sniffer_alive(Sniffer(False, Thread(True)))
     assert not sniffer_alive(Sniffer(True, None))
+
+
+def test_one_bad_observation_does_not_lose_the_others(db, monkeypatch):
+    import app.sentinel.main as sentinel_main
+
+    real = sentinel_main.record_observation
+
+    def flaky(session, obs, plan, now):
+        device = real(session, obs, plan, now)
+        if obs.mac == "00:00:5E:00:53:41":
+            raise RuntimeError("boom after a partial write")
+        return device
+
+    monkeypatch.setattr(sentinel_main, "record_observation", flaky)
+    packets = [Ether(bytes(Ether() / ARP(op=2, hwsrc=mac, psrc=ip))) for mac, ip in (
+        ("00:00:5e:00:53:40", "192.168.1.243"), ("00:00:5e:00:53:41", "192.168.1.244"),
+        ("00:00:5e:00:53:42", "192.168.1.245"))]
+    assert flush(packets, PLAN, lambda: nullcontext(db), NOW) == 2
+    macs = set(db.scalars(select(Device.mac)))
+    assert {"00:00:5E:00:53:40", "00:00:5E:00:53:42"} <= macs
+    assert "00:00:5E:00:53:41" not in macs

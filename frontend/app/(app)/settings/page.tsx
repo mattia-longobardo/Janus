@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { CutoverReadiness } from "@/components/cutover-readiness";
 import { type NetDraft, errorField, networkPatch, toDraft } from "@/components/settings-network";
 import { REPEATS, nextRun, zoneLabel } from "@/components/settings-schedule";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -308,6 +309,12 @@ export default function SettingsPage() {
                 on={applying}
               />
               <StatusRow title="ARP isolation" detail="Planned · also cuts off devices that set a manual static IP" on={false} />
+              <StatusRow
+                title="Pi-hole sync"
+                detail={applying ? "apply — Janus writes reservations to Pi-hole" : "dry-run — Janus only compares with Pi-hole"}
+                on={applying}
+              />
+              <CutoverReadiness />
             </div>
           </SectionCard>
         </div>

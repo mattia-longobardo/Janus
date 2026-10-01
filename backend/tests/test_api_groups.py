@@ -89,3 +89,15 @@ def test_patch_scan_settings(client):
     assert (body["scan_enabled"], body["scan_interval_hours"]) == (True, 24)
     assert client.patch(f"/api/groups/{gid}", json={"scan_interval_hours": 0}).status_code == 422
     assert client.patch(f"/api/groups/{gid}", json={"scan_enabled": None}).status_code == 422
+
+
+def test_unique_constraint_race_is_a_409(client, db, monkeypatch):
+    import app.api.groups as groups_api
+
+    body = {"name": "Racers", "color": "#6FB7FF", "icon": "device", "range_start": "192.168.1.30",
+            "range_end": "192.168.1.39"}
+    assert client.post("/api/groups", json=body).status_code == 201
+    monkeypatch.setattr(groups_api, "_name_taken", lambda *args, **kwargs: False)
+    response = client.post("/api/groups", json={**body, "range_start": "192.168.1.40", "range_end": "192.168.1.49"})
+    assert response.status_code == 409
+    assert "already" in response.json()["detail"]

@@ -65,3 +65,28 @@ def test_current_tz_prefers_setting_and_falls_back_to_utc(db):
     db.get(Setting, "general.timezone").value = "Mars/Olympus"
     db.flush()
     assert current_tz(db) == ZoneInfo("UTC")
+
+
+def test_daily_window_on_dst_change_days():
+    for midnight in (datetime(2026, 3, 29, 0, 0, tzinfo=ROME), datetime(2026, 10, 25, 0, 0, tzinfo=ROME)):
+        end = datetime.combine(midnight.date() + timedelta(days=1), time(0, 0), tzinfo=ROME)
+        assert muted_seconds([REBOOT], midnight, end, ROME) == 900
+        assert alerts_muted([REBOOT], midnight.replace(hour=5, minute=5), ROME)
+
+
+def test_windows_spanning_a_dst_change_last_their_real_duration():
+    two_hours = Window(time(1, 30), timedelta(hours=2))
+    spring = datetime(2026, 3, 29, 0, 0, tzinfo=ROME)
+    autumn = datetime(2026, 10, 25, 0, 0, tzinfo=ROME)
+    assert muted_seconds([two_hours], spring, spring.replace(hour=8), ROME) == 7200
+    assert muted_seconds([two_hours], autumn, autumn.replace(hour=8), ROME) == 7200
+    assert alerts_muted([two_hours], datetime(2026, 3, 29, 4, 15, tzinfo=ROME), ROME)
+    assert not alerts_muted([two_hours], datetime(2026, 10, 25, 3, 0, tzinfo=ROME).replace(fold=1), ROME)
+
+
+def test_window_starting_in_the_skipped_hour_still_happens_once():
+    skipped = Window(time(2, 30), timedelta(minutes=15))
+    spring = datetime(2026, 3, 29, 0, 0, tzinfo=ROME)
+    autumn = datetime(2026, 10, 25, 0, 0, tzinfo=ROME)
+    assert muted_seconds([skipped], spring, spring.replace(hour=8), ROME) == 900
+    assert muted_seconds([skipped], autumn, autumn.replace(hour=8), ROME) == 900

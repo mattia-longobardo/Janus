@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.api.conflicts import commit_or_409
 from app.db import get_db
 from app.models import Access, Device, Group
 from app.net.ipplan import AssignmentError, IpRange, NetworkPlan, check_group_range, next_free
@@ -131,7 +132,7 @@ def create_group(body: GroupIn, db: Session = Depends(get_db)) -> GroupOut:
         scan_enabled=body.scan_enabled, scan_interval_hours=body.scan_interval_hours,
     )
     db.add(group)
-    db.commit()
+    commit_or_409(db, f"a group named {body.name!r} or with that range already exists")
     return _out(db, group)
 
 
@@ -152,7 +153,7 @@ def update_group(group_id: int, body: GroupPatch, db: Session = Depends(get_db))
         fields["range_start"], fields["range_end"] = str(rng.start), str(rng.end)
     for key, value in fields.items():
         setattr(group, key, value)
-    db.commit()
+    commit_or_409(db, "another group already uses that name")
     return _out(db, group)
 
 
