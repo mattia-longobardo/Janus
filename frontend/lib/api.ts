@@ -1,3 +1,5 @@
+export const CHANGED_EVENT = "janus:changed";
+
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -42,6 +44,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     }
     throw new ApiError(response.status, message);
   }
+  if (method !== "GET" && typeof window !== "undefined") window.dispatchEvent(new Event(CHANGED_EVENT));
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }

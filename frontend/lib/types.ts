@@ -60,6 +60,7 @@ export interface ServiceItem {
   version: string | null;
   risk: "none" | "warning" | "high";
   risk_reason: string | null;
+  muted: boolean;
   first_seen: string;
   last_seen: string;
 }
@@ -86,6 +87,8 @@ export interface Rule {
   label: string;
   email: boolean;
   gotify: boolean;
+  priority: number;
+  default_priority: number;
 }
 
 export interface MaintenanceWindow {
@@ -98,6 +101,17 @@ export interface MaintenanceWindow {
   mute_alerts: boolean;
   pause_isolation: boolean;
 }
+
+export type NetworkField =
+  | "subnet"
+  | "gateway"
+  | "quarantine_start"
+  | "quarantine_end"
+  | "pihole_url"
+  | "sentinel_interface"
+  | "sweep_interval_s"
+  | "scan_window_start"
+  | "scan_window_end";
 
 export interface AppSettings {
   timezone: string;
@@ -113,6 +127,7 @@ export interface AppSettings {
     sweep_interval_s: number;
   };
   scan_window: { start: string; end: string };
+  source?: Partial<Record<NetworkField, "env" | "custom">>;
   status: {
     pihole_down_since: string | null;
     sentinel_down_since: string | null;

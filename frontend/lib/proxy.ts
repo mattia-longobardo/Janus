@@ -38,7 +38,7 @@ export async function forward(req: Request, path: string[], options: ForwardOpti
     cache: "no-store",
   });
   const headers = new Headers();
-  for (const name of ["content-type", "cache-control"]) {
+  for (const name of ["content-type", "cache-control", "content-disposition"]) {
     const value = upstream.headers.get(name);
     if (value) headers.set(name, value);
   }

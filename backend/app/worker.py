@@ -15,6 +15,7 @@ from app.general import current_tz
 from app.intel.identity import identity_once
 from app.maintenance import Window, active_windows, load_windows
 from app.models import Setting
+from app.netconfig import load_netconfig, load_with
 from app.notify.channels import EmailChannel, GotifyChannel
 from app.notify.debounce import Debouncer, RedisDebouncer
 from app.notify.dispatcher import Sender, dispatch_pending
@@ -93,7 +94,7 @@ def presence_once(session_factory: SessionFactory, now: datetime | None = None) 
         now = now or datetime.now(UTC)
         windows, tz = load_windows(db), current_tz(db)
         track_maintenance(db, now, windows, tz)
-        if check_sentinel(db, now, timedelta(seconds=3 * settings.sweep_interval_s)):
+        if check_sentinel(db, now, timedelta(seconds=3 * load_netconfig(db).sweep_interval_s)):
             evaluate_presence(db, now=now, timeout=timedelta(seconds=settings.presence_timeout_s), windows=windows, tz=tz)
         purge_sightings(db, now - timedelta(days=settings.sighting_retention_days))
         db.commit()
@@ -127,7 +128,7 @@ def main() -> None:
     debouncer = RedisDebouncer(Redis.from_url(settings.redis_url))
     jobs: list[tuple[str, int, Callable[[], object]]] = [
         ("reconcile", settings.reconcile_interval_s, lambda: reconcile_once(
-            SessionLocal, lambda: PiholeClient(settings.pihole_url, settings.pihole_password),
+            SessionLocal, lambda: PiholeClient(load_with(SessionLocal).pihole_url, settings.pihole_password),
             lease=settings.reservation_lease, apply=apply)),
         ("presence", settings.presence_interval_s, lambda: presence_once(SessionLocal)),
         ("dispatch", settings.dispatch_interval_s, lambda: dispatch_once(SessionLocal, senders, debouncer)),

@@ -1,9 +1,10 @@
 "use client";
 
 import clsx from "clsx";
+import { Bell, BellOff } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 
 import { InfoCard, InfoRow, StatCard } from "@/components/device-info";
 import { adviceList, riskLevel, sortServices } from "@/components/device-security";
@@ -40,11 +41,13 @@ const RISK_TONE = { High: "text-bad", Medium: "text-accent-text", Low: "text-tex
 
 export default function DevicePage() {
   const { id } = useParams<{ id: string }>();
+  const [fromMap, setFromMap] = useState(false);
+  useEffect(() => setFromMap(new URLSearchParams(window.location.search).get("from") === "map"), []);
   const { settings } = useSettings();
-  const deviceRes = useResource<Device>(`/devices/${id}`, { refreshMs: 30_000 });
+  const deviceRes = useResource<Device>(`/devices/${id}`, { refreshMs: 15_000 });
   const groupsRes = useResource<Group[]>("/groups");
   const factsRes = useResource<Facts>(`/devices/${id}/facts`);
-  const servicesRes = useResource<ServiceItem[]>(`/devices/${id}/services`, { refreshMs: 30_000 });
+  const servicesRes = useResource<ServiceItem[]>(`/devices/${id}/services`, { refreshMs: 15_000 });
   const device = deviceRes.data;
   const dnsDayRes = useResource<DnsActivity>(device?.last_ip ? `/devices/${id}/dns?hours=24` : null);
   const eventsRes = useResource<EventItem[]>(device?.mac ? `/events?mac=${encodeURIComponent(device.mac)}&limit=20` : null);
@@ -57,7 +60,22 @@ export default function DevicePage() {
   const group = groups.find((g) => g.id === device.group_id);
   const { Icon, color } = deviceLook(device, groups);
   const services = sortServices(servicesRes.data ?? []);
-  const risky = services.filter((s) => s.risk !== "none");
+  const risky = services.filter((s) => s.risk !== "none" && !s.muted);
+  const mutedCount = services.filter((s) => s.risk !== "none" && s.muted).length;
+
+  async function toggleMute(service: ServiceItem) {
+    try {
+      await api.patch(`/devices/${id}/services/${service.port}/${service.proto}`, { muted: !service.muted });
+      setNotice({
+        tone: "success",
+        text: service.muted
+          ? `Alerts for port ${service.port}/${service.proto} are back on.`
+          : `Port ${service.port}/${service.proto} muted: it will not raise alerts.`,
+      });
+    } catch (err) {
+      setNotice({ tone: "error", text: errorText(err) });
+    }
+  }
   const risk = riskLevel(services);
   const summary = factsRes.data?.summary ?? {};
   const when = (iso: string | null) => formatDateTime(iso, settings.timezone, settings.time_format);
@@ -84,8 +102,8 @@ export default function DevicePage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Link href="/devices" className="self-start text-sm no-underline">
-        <span className="text-ok hover:text-text">← All devices</span>
+      <Link href={fromMap ? "/map" : "/devices"} className="self-start text-sm no-underline">
+        <span className="text-ok hover:text-text">{fromMap ? "← Network map" : "← All devices"}</span>
       </Link>
       <header className="flex flex-wrap items-end justify-between gap-6">
         <div className="flex min-w-0 items-center gap-4">
@@ -145,7 +163,7 @@ export default function DevicePage() {
         />
       )}
 
-      <div className="grid items-start gap-5 lg:grid-cols-2">
+      <div className="grid items-stretch gap-5 lg:grid-cols-2">
         <InfoCard
           title="Identity"
           footer="Each value shows where it came from. Passive sources only; active probes only when you press Scan now or on the group schedule."
@@ -177,7 +195,7 @@ export default function DevicePage() {
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard label="Risk" value={risk} tone={RISK_TONE[risk]} note={`${risky.length} finding${risky.length === 1 ? "" : "s"}`} />
         <StatCard label="Open ports" value={services.length} note={device.last_scan_at ? `last scan ${when(device.last_scan_at)}` : "not scanned yet"} />
-        <StatCard label="Risky services" value={risky.length} tone={risky.length ? "text-bad" : "text-ok"} note="telnet, FTP, VNC, databases, UPnP…" />
+        <StatCard label="Risky services" value={risky.length} tone={risky.length ? "text-bad" : "text-ok"} note={mutedCount ? `${mutedCount} muted · no alerts` : "telnet, FTP, VNC, databases, UPnP…"} />
         <StatCard
           label="DNS queries 24 h"
           value={dnsDayRes.data ? dnsDayRes.data.total : "—"}
@@ -197,9 +215,9 @@ export default function DevicePage() {
           <p className="mt-3 text-sm text-muted">{device.last_scan_at ? "No open ports found." : "Not scanned yet."}</p>
         ) : (
           <div className="mt-2 overflow-x-auto">
-            <div className="min-w-[640px]">
+            <div className="min-w-[760px]">
               {services.map((s) => (
-                <div key={`${s.port}/${s.proto}`} className="grid grid-cols-[110px_1.2fr_1.6fr_90px] items-center gap-4 border-b border-row py-[11px] text-sm">
+                <div key={`${s.port}/${s.proto}`} className={clsx("grid grid-cols-[110px_1.2fr_1.6fr_80px_120px] items-center gap-4 border-b border-row py-[11px] text-sm", s.muted && "text-muted")}>
                   <span className="font-mono">
                     {s.port}/{s.proto}
                   </span>
@@ -211,10 +229,25 @@ export default function DevicePage() {
                   <span
                     className={clsx(
                       "text-xs font-semibold",
-                      s.risk === "high" ? "text-bad" : s.risk === "warning" ? "text-accent-text" : "text-muted",
+                      s.muted ? "text-faint line-through" : s.risk === "high" ? "text-bad" : s.risk === "warning" ? "text-accent-text" : "text-muted",
                     )}
+                    title={s.muted ? "Muted: no alerts" : undefined}
                   >
                     {s.risk === "high" ? "High" : s.risk === "warning" ? "Warning" : "Info"}
+                  </span>
+                  <span className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => void toggleMute(s)}
+                      aria-label={`${s.muted ? "Unmute" : "Mute alerts for"} port ${s.port}/${s.proto}`}
+                      className={clsx(
+                        "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-xs font-medium",
+                        s.muted ? "border-accent-line bg-accent-soft text-accent-text" : "border-line2 text-muted hover:text-text",
+                      )}
+                    >
+                      {s.muted ? <BellOff className="size-3.5" aria-hidden /> : <Bell className="size-3.5" aria-hidden />}
+                      {s.muted ? "Muted" : "Mute alerts"}
+                    </button>
                   </span>
                 </div>
               ))}
@@ -223,7 +256,7 @@ export default function DevicePage() {
         )}
       </section>
 
-      <div className="grid items-start gap-5 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid items-stretch gap-5 lg:grid-cols-[1.4fr_1fr]">
         <DnsCard device={device} />
         <section className="rounded-[14px] border border-line bg-card px-6 py-5">
           <h2 className="mb-3 font-display text-[19px] font-bold">What to do</h2>
@@ -253,8 +286,13 @@ function DnsCard({ device }: { device: Device }) {
   return (
     <section className="rounded-[14px] border border-line bg-card px-6 py-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-display text-[19px] font-bold">DNS activity</h2>
-        <select aria-label="Period" className={`${inputClass} w-36`} value={hours} onChange={(e) => setHours(Number(e.target.value))}>
+        <div className="flex items-baseline gap-3">
+          <h2 className="font-display text-[19px] font-bold">DNS activity</h2>
+          <Link href={`/devices/${device.id}/dns`} className="text-sm no-underline">
+            <span className="text-ok hover:text-text">Analyse →</span>
+          </Link>
+        </div>
+        <select aria-label="Period" className={`${inputClass.replace("w-full ", "")} w-40`} value={hours} onChange={(e) => setHours(Number(e.target.value))}>
           <option value={24}>Last 24 h</option>
           <option value={72}>Last 3 days</option>
           <option value={168}>Last 7 days</option>

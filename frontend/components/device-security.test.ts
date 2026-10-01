@@ -5,7 +5,7 @@ import { makeDevice } from "@/lib/test-data";
 import type { ServiceItem } from "@/lib/types";
 
 const svc = (port: number, service: string | null, risk: ServiceItem["risk"]): ServiceItem => ({
-  port, proto: "tcp", state: "open", service, version: null, risk, risk_reason: null,
+  port, proto: "tcp", state: "open", service, version: null, risk, risk_reason: null, muted: false,
   first_seen: "2026-10-01T10:00:00Z", last_seen: "2026-10-01T10:00:00Z",
 });
 const window = { start: "08:00", end: "22:00" };
@@ -39,5 +39,15 @@ describe("adviceList", () => {
       "No risky services found. Rescan after firmware updates.",
       "LAN only is active: the device reaches home devices but never the internet.",
     ]);
+  });
+});
+
+describe("muted risks", () => {
+  it("no longer count towards the risk level or advice", () => {
+    const telnet = { ...svc(23, "telnet", "high"), muted: true };
+    expect(riskLevel([telnet, svc(80, "http", "none")])).toBe("Low");
+    const tips = adviceList(makeDevice({ last_scan_at: "2026-10-01T10:00:00Z" }), [telnet], window);
+    expect(tips.some((tip) => tip.includes("telnet"))).toBe(false);
+    expect(tips).toContain("1 accepted risk is muted: no alerts for it.");
   });
 });

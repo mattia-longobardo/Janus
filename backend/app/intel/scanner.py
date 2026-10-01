@@ -18,6 +18,7 @@ from app.intel.nmap import parse_nmap_xml
 from app.intel.scanning import apply_scan, pick_next
 from app.maintenance import active_windows, load_windows
 from app.models import Device
+from app.netconfig import load_netconfig
 from app.notify.policy import in_quiet_hours, parse_hhmm
 from app.notify.store import load_notify_settings
 
@@ -44,7 +45,8 @@ def _choose(db: Session, now: datetime) -> Device | None:
     windows = load_windows(db)
     end = now + timedelta(seconds=settings.scan_host_timeout_s + 60)
     quiet_start, quiet_end = parse_hhmm(ns.quiet_start), parse_hhmm(ns.quiet_end)
-    day_start, day_end = parse_hhmm(settings.scan_window_start), parse_hhmm(settings.scan_window_end)
+    cfg = load_netconfig(db)
+    day_start, day_end = parse_hhmm(cfg.scan_window_start), parse_hhmm(cfg.scan_window_end)
     muted = any(active_windows(windows, moment, tz) for moment in (now, end))
     quiet = any(
         in_quiet_hours(moment.astimezone(tz).time(), quiet_start, quiet_end)

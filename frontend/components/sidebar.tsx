@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/lib/auth-actions";
 import { describeDays } from "@/lib/days";
 import { relativeTime } from "@/lib/format";
+import { nextScanIn, useNow } from "@/lib/use-now";
 import { useSettings } from "@/lib/settings-context";
 import type { Device, MaintenanceWindow } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
@@ -40,7 +41,9 @@ export function Logo() {
 export function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; user: string }) {
   const pathname = usePathname();
   const { settings } = useSettings();
-  const { data: devices } = useResource<Device[]>("/devices", { refreshMs: 30_000 });
+  const { data: devices } = useResource<Device[]>("/devices", { refreshMs: 15_000 });
+  const now = useNow(1000);
+  const nextScan = nextScanIn(settings.status.last_sweep_at, settings.network.sweep_interval_s, now);
   const { data: windows } = useResource<MaintenanceWindow[]>("/maintenance-windows");
   const maint = windows?.find((w) => w.enabled);
   const { status } = settings;
@@ -120,7 +123,8 @@ export function Sidebar({ open, onClose, user }: { open: boolean; onClose: () =>
             </span>
           )}
           <span className="font-mono text-xs text-faint">
-            last scan {relativeTime(status.last_sweep_at)} · {settings.timezone}
+            last scan {relativeTime(status.last_sweep_at, now)}
+            {nextScan ? ` · ${nextScan}` : ""} · {settings.timezone}
           </span>
           <form action={logout} className="flex items-center justify-between gap-2 border-t border-line pt-2.5">
             <span className="truncate text-xs">{user}</span>

@@ -94,3 +94,43 @@ def test_list_queries_filters_by_client_and_time(respx_mock):
     assert _client().list_queries("192.168.1.40", 100, 200, length=50, disk=True) == ([{"domain": "example.org"}], 7)
     params = dict(route.calls.last.request.url.params)
     assert params == {"client_ip": "192.168.1.40", "from": "100", "until": "200", "length": "50", "disk": "true"}
+
+
+@respx.mock(base_url=BASE, assert_all_called=False)
+def test_shared_session_logs_in_once_for_concurrent_clients(respx_mock):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.pihole.client import SharedSession
+
+    login = respx_mock.post("/api/auth").respond(json=LOGIN_OK)
+    logout = respx_mock.route(method="DELETE", path="/api/auth").respond(204)
+    respx_mock.get("/api/dhcp/leases").respond(json={"leases": []})
+    shared = SharedSession()
+
+    def call(_: int) -> list:
+        with PiholeClient(BASE, "secret", shared=shared) as client:
+            return client.list_leases()
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        assert list(pool.map(call, range(12))) == [[]] * 12
+    assert login.call_count == 1
+    assert logout.call_count == 0
+    assert shared.sid == "sid-1"
+
+
+@respx.mock(base_url=BASE)
+def test_shared_session_renews_once_when_expired(respx_mock):
+    from app.pihole.client import SharedSession
+
+    shared = SharedSession()
+    shared.sid = "old"
+    login = respx_mock.post("/api/auth").respond(json={"session": {"valid": True, "sid": "new", "validity": 1800}})
+    leases = respx_mock.get("/api/dhcp/leases")
+    leases.side_effect = lambda request: httpx.Response(
+        200 if request.headers["X-FTL-SID"] == "new" else 401, json={"leases": []})
+    with PiholeClient(BASE, "secret", shared=shared) as client:
+        assert client.list_leases() == []
+    with PiholeClient(BASE, "secret", shared=shared) as client:
+        assert client.list_leases() == []
+    assert login.call_count == 1
+    assert shared.sid == "new"

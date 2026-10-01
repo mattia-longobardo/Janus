@@ -157,6 +157,7 @@ class Service(Base):
     version: Mapped[str | None] = mapped_column(String(255))
     risk: Mapped[str] = mapped_column(String(16))
     risk_reason: Mapped[str | None] = mapped_column(String(128))
+    muted: Mapped[bool] = mapped_column(Boolean, server_default="false", default=False)
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

@@ -3,8 +3,9 @@ import type { Device, ServiceItem } from "@/lib/types";
 export type RiskLevel = "High" | "Medium" | "Low" | "None";
 
 export function riskLevel(services: ServiceItem[]): RiskLevel {
-  if (services.some((s) => s.risk === "high")) return "High";
-  if (services.some((s) => s.risk === "warning")) return "Medium";
+  const active = services.filter((s) => !s.muted);
+  if (active.some((s) => s.risk === "high")) return "High";
+  if (active.some((s) => s.risk === "warning")) return "Medium";
   if (services.length > 0) return "Low";
   return "None";
 }
@@ -33,8 +34,10 @@ function adviceFor(service: ServiceItem): string {
 
 export function adviceList(device: Device, services: ServiceItem[], scanWindow: { start: string; end: string }): string[] {
   const tips: string[] = [];
-  const risky = sortServices(services).filter((s) => s.risk !== "none");
+  const risky = sortServices(services).filter((s) => s.risk !== "none" && !s.muted);
+  const muted = services.filter((s) => s.risk !== "none" && s.muted).length;
   tips.push(...risky.map(adviceFor));
+  if (muted) tips.push(`${muted} accepted risk${muted === 1 ? " is" : "s are"} muted: no alerts for ${muted === 1 ? "it" : "them"}.`);
   if (!device.last_scan_at) {
     tips.push(`Not scanned yet: press Scan now (scans run between ${scanWindow.start} and ${scanWindow.end}).`);
   } else if (risky.length === 0) {

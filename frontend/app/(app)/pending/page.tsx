@@ -22,7 +22,7 @@ const EVENT_DOT: Record<string, string> = {
 
 export default function PendingPage() {
   const { settings } = useSettings();
-  const devicesRes = useResource<Device[]>("/devices?access=pending", { refreshMs: 30_000 });
+  const devicesRes = useResource<Device[]>("/devices?access=pending", { refreshMs: 15_000 });
   const groupsRes = useResource<Group[]>("/groups");
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string }>();
   const pending = devicesRes.data ?? [];

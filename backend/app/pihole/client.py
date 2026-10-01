@@ -1,3 +1,4 @@
+import threading
 from typing import Any, Self
 from urllib.parse import quote
 
@@ -14,11 +15,31 @@ class PiholeError(RuntimeError):
         return self.status is not None and 400 <= self.status < 500
 
 
+class SharedSession:
+    """One Pi-hole login reused by concurrent API requests: Pi-hole refuses parallel logins (HTTP 429/401)."""
+
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.sid: str | None = None
+
+
+_SHARED: dict[str, SharedSession] = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def shared_session(base_url: str) -> SharedSession:
+    with _SHARED_LOCK:
+        return _SHARED.setdefault(base_url, SharedSession())
+
+
 class PiholeClient:
-    def __init__(self, base_url: str, password: str, *, http: httpx.Client | None = None) -> None:
+    def __init__(
+        self, base_url: str, password: str, *, http: httpx.Client | None = None, shared: SharedSession | None = None
+    ) -> None:
         self._http = http or httpx.Client(base_url=base_url, timeout=10.0)
         self._password = password
-        self._sid: str | None = None
+        self._shared = shared
+        self._sid: str | None = shared.sid if shared else None
 
     def __enter__(self) -> Self:
         return self
@@ -27,6 +48,18 @@ class PiholeClient:
         self.close()
 
     def _login(self) -> None:
+        if self._shared is None:
+            self._authenticate()
+            return
+        stale = self._sid
+        with self._shared.lock:
+            if self._shared.sid is not None and self._shared.sid != stale:
+                self._sid = self._shared.sid
+                return
+            self._authenticate()
+            self._shared.sid = self._sid
+
+    def _authenticate(self) -> None:
         try:
             response = self._http.post("/api/auth", json={"password": self._password})
         except httpx.HTTPError as exc:
@@ -84,7 +117,7 @@ class PiholeClient:
         self._request("DELETE", f"/api/dhcp/leases/{ip}")
 
     def close(self) -> None:
-        if self._sid is not None:
+        if self._sid is not None and self._shared is None:
             try:
                 self._http.delete("/api/auth", headers={"X-FTL-SID": self._sid})
             except httpx.HTTPError:

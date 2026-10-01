@@ -1,5 +1,6 @@
 "use client";
 
+import { FileSpreadsheet } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { DeviceTable } from "@/components/device-table";
@@ -12,7 +13,7 @@ import type { Access, Device, Group } from "@/lib/types";
 import { useResource } from "@/lib/use-resource";
 
 export default function DevicesPage() {
-  const devicesRes = useResource<Device[]>("/devices", { refreshMs: 30_000 });
+  const devicesRes = useResource<Device[]>("/devices", { refreshMs: 15_000 });
   const groupsRes = useResource<Group[]>("/groups");
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState<{ tone: "success" | "error"; text: string }>();
@@ -34,14 +35,28 @@ export default function DevicesPage() {
   const shown = groupId === "all" ? base : base.filter((d) => d.group_id === groupId);
   const chips = groups.map((g) => ({ group: g, count: base.filter((d) => d.group_id === g.id).length })).filter((c) => c.count > 0);
   const online = devices.filter((d) => d.online).length;
+  const exportParams = new URLSearchParams();
+  if (groupId !== "all") exportParams.set("group_id", String(groupId));
+  if (access !== "all") exportParams.set("access", access);
+  const exportHref = `/api/devices/export.xlsx${exportParams.size ? `?${exportParams}` : ""}`;
 
   return (
     <div className="flex flex-col gap-6">
-      <header className="flex flex-col gap-1.5">
-        <h1 className="font-display text-[32px] font-bold tracking-[-0.02em] lg:text-4xl">Devices</h1>
-        <p className="font-mono text-[13px] text-faint">
-          {devices.length} known · {online} online · {devices.filter((d) => d.access === "pending").length} pending
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="font-display text-[32px] font-bold tracking-[-0.02em] lg:text-4xl">Devices</h1>
+          <p className="font-mono text-[13px] text-faint">
+            {devices.length} known · {online} online · {devices.filter((d) => d.access === "pending").length} pending
+          </p>
+        </div>
+        <a
+          href={exportHref}
+          download
+          className="inline-flex h-11 items-center gap-2 rounded-lg border border-line2 bg-card px-[18px] text-sm font-medium text-text hover:bg-card2"
+        >
+          <FileSpreadsheet className="size-4" aria-hidden />
+          Download Excel
+        </a>
       </header>
       {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
       {devicesRes.error && <Notice tone="error">{devicesRes.error}</Notice>}

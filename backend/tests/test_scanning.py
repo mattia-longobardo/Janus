@@ -109,3 +109,14 @@ def test_several_risky_ports_make_one_alert(db, servers):
     [risky] = _events(db, "security.risky_service")
     assert risky.payload["risk"] == "high"
     assert [p["port"] for p in risky.payload["ports"]] == [21, 23, 5900]
+
+
+def test_muted_services_raise_no_alerts(db, servers):
+    device = _device(db, servers, "00:00:5E:00:53:36")
+    db.add(Service(mac=device.mac, port=23, proto="tcp", state="closed", risk="high", muted=True,
+                   first_seen=NOW, last_seen=NOW))
+    db.flush()
+    apply_scan(db, device, [PortResult(23, "tcp", "telnet", None)], NOW)
+    assert _events(db, "security.risky_service") == []
+    row = db.scalar(select(Service).where(Service.mac == device.mac))
+    assert (row.state, row.risk, row.muted) == ("open", "high", True)

@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.api.groups import plan
 from app.db import get_db
 from app.events import record_event
+from app.export import devices_workbook
+from app.general import current_tz
 from app.models import Access, Device, Group
 from app.net.ipplan import AssignmentError, check_assignment
 from app.net.names import hostname_for
@@ -70,6 +72,17 @@ def list_devices(group_id: int | None = None, access: Access | None = None,
     return sorted(devices, key=lambda d: (d.static_ip is None, IPv4Address(d.static_ip or "0.0.0.0"), d.name))
 
 
+@router.get("/export.xlsx")
+def export_devices(group_id: int | None = None, access: Access | None = None, db: Session = Depends(get_db)) -> Response:
+    devices = list_devices(group_id=group_id, access=access, db=db)
+    stamp = datetime.now(current_tz(db)).strftime("%Y-%m-%d")
+    return Response(
+        content=devices_workbook(devices, current_tz(db)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="janus-devices-{stamp}.xlsx"'},
+    )
+
+
 @router.get("/{device_id}", response_model=DeviceOut)
 def get_device(device_id: uuid.UUID, db: Session = Depends(get_db)) -> Device:
     return get_device_or_404(db, device_id)
@@ -96,7 +109,7 @@ def update_device(device_id: uuid.UUID, body: DevicePatch, db: Session = Depends
             for ip in db.scalars(select(Device.static_ip).where(Device.static_ip.is_not(None), Device.id != device.id))
         }
         try:
-            new_ip = str(check_assignment(plan(), new_ip, group.ip_range(), taken))
+            new_ip = str(check_assignment(plan(db), new_ip, group.ip_range(), taken))
         except AssignmentError as exc:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
 

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { api, errorText } from "@/lib/api";
+import { CHANGED_EVENT, api, errorText } from "@/lib/api";
 
 export function useResource<T>(path: string | null, options: { refreshMs?: number } = {}) {
   const [data, setData] = useState<T>();
@@ -23,9 +23,20 @@ export function useResource<T>(path: string | null, options: { refreshMs?: numbe
 
   useEffect(() => {
     void reload();
-    if (!options.refreshMs) return;
-    const id = window.setInterval(() => void reload(), options.refreshMs);
-    return () => window.clearInterval(id);
+    const onChange = () => void reload();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reload();
+    };
+    window.addEventListener(CHANGED_EVENT, onChange);
+    window.addEventListener("focus", onChange);
+    document.addEventListener("visibilitychange", onVisible);
+    const id = options.refreshMs ? window.setInterval(() => void reload(), options.refreshMs) : undefined;
+    return () => {
+      window.removeEventListener(CHANGED_EVENT, onChange);
+      window.removeEventListener("focus", onChange);
+      document.removeEventListener("visibilitychange", onVisible);
+      if (id !== undefined) window.clearInterval(id);
+    };
   }, [reload, options.refreshMs]);
 
   return { data, error, loading, reload, setData };
