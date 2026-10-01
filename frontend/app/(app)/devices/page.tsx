@@ -27,16 +27,17 @@ export default function DevicesPage() {
       setNotice({ tone: "error", text: errorText(err) });
     }
   }
-  const [groupId, setGroupId] = useState<number | "all">("all");
+  const [groupId, setGroupId] = useState<number | "all" | "issues">("all");
   const [access, setAccess] = useState<Access | "all">("all");
   const groups = useMemo(() => groupsRes.data ?? [], [groupsRes.data]);
   const devices = useMemo(() => devicesRes.data ?? [], [devicesRes.data]);
   const base = useMemo(() => filterDevices(devices, { query, groupId: "all", access }), [devices, query, access]);
-  const shown = groupId === "all" ? base : base.filter((d) => d.group_id === groupId);
+  const attention = base.filter((d) => d.health !== "ok");
+  const shown = groupId === "all" ? base : groupId === "issues" ? attention : base.filter((d) => d.group_id === groupId);
   const chips = groups.map((g) => ({ group: g, count: base.filter((d) => d.group_id === g.id).length })).filter((c) => c.count > 0);
   const online = devices.filter((d) => d.online).length;
   const exportParams = new URLSearchParams();
-  if (groupId !== "all") exportParams.set("group_id", String(groupId));
+  if (typeof groupId === "number") exportParams.set("group_id", String(groupId));
   if (access !== "all") exportParams.set("access", access);
   const exportHref = `/api/devices/export.xlsx${exportParams.size ? `?${exportParams}` : ""}`;
 
@@ -90,6 +91,11 @@ export default function DevicesPage() {
             <Chip active={groupId === "all"} count={base.length} onClick={() => setGroupId("all")}>
               All
             </Chip>
+            {attention.length > 0 && (
+              <Chip active={groupId === "issues"} count={attention.length} onClick={() => setGroupId("issues")}>
+                <span className={attention.some((d) => d.health === "critical") ? "text-bad" : "text-accent-text"}>Needs attention</span>
+              </Chip>
+            )}
             {chips.map(({ group, count }) => (
               <Chip key={group.id} active={groupId === group.id} count={count} onClick={() => setGroupId(group.id)}>
                 {group.name}
