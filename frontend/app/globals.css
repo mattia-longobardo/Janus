@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+@source "../app";
+@source "../components";
+@source "../lib";
+
+:root {
+  --bg: #f4f2ec;
+  --side: #ebe8e0;
+  --card: #ffffff;
+  --card2: #f8f6f1;
+  --line: #e2ddd2;
+  --line2: #cfc9bc;
+  --row: #eeeae1;
+  --text: #17191b;
+  --text2: #33383c;
+  --muted: #555c61;
+  --faint: #646b70;
+  --accent: #d08a2e;
+  --accent-text: #8a5310;
+  --accent-ink: #1a1204;
+  --accent-soft: #fbf1e1;
+  --accent-line: #e6c28a;
+  --ok: #1f6fc4;
+  --off: #a3a8ab;
+  --bad: #b8432a;
+  --inv-bg: #17191b;
+  --inv-fg: #ffffff;
+  --canvas: #f9f8f4;
+  --dotgrid: #e4e0d6;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1113;
+    --side: #0b0e10;
+    --card: #14181b;
+    --card2: #1a1f23;
+    --line: #232a2f;
+    --line2: #2f373d;
+    --row: #1c2226;
+    --text: #e9ecea;
+    --text2: #c9cdd0;
+    --muted: #9aa3a8;
+    --faint: #8a949a;
+    --accent: #e0a84e;
+    --accent-text: #e0a84e;
+    --accent-ink: #1a1204;
+    --accent-soft: #1a1712;
+    --accent-line: #4a3d22;
+    --ok: #6fb7ff;
+    --off: #5b656c;
+    --bad: #f0765c;
+    --inv-bg: #e9ecea;
+    --inv-fg: #0e1113;
+    --canvas: #101416;
+    --dotgrid: #1e2428;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0e1113;
+  --side: #0b0e10;
+  --card: #14181b;
+  --card2: #1a1f23;
+  --line: #232a2f;
+  --line2: #2f373d;
+  --row: #1c2226;
+  --text: #e9ecea;
+  --text2: #c9cdd0;
+  --muted: #9aa3a8;
+  --faint: #8a949a;
+  --accent: #e0a84e;
+  --accent-text: #e0a84e;
+  --accent-ink: #1a1204;
+  --accent-soft: #1a1712;
+  --accent-line: #4a3d22;
+  --ok: #6fb7ff;
+  --off: #5b656c;
+  --bad: #f0765c;
+  --inv-bg: #e9ecea;
+  --inv-fg: #0e1113;
+  --canvas: #101416;
+  --dotgrid: #1e2428;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-side: var(--side);
+  --color-card: var(--card);
+  --color-card2: var(--card2);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-row: var(--row);
+  --color-text: var(--text);
+  --color-text2: var(--text2);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-text: var(--accent-text);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-ok: var(--ok);
+  --color-off: var(--off);
+  --color-bad: var(--bad);
+  --color-inv-bg: var(--inv-bg);
+  --color-inv-fg: var(--inv-fg);
+  --color-canvas: var(--canvas);
+  --color-dotgrid: var(--dotgrid);
+  --font-display: var(--nf-display), ui-sans-serif, sans-serif;
+  --font-sans: var(--nf-sans), ui-sans-serif, sans-serif;
+  --font-mono: var(--nf-mono), ui-monospace, monospace;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}

@@ -3,7 +3,20 @@ import uuid
 from datetime import datetime, time
 from typing import Any
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Index, Integer, String, Time, UniqueConstraint, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Time,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -60,6 +73,8 @@ class Device(Base):
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_scan_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     scan_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    map_x: Mapped[float | None] = mapped_column(Float)
+    map_y: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     group: Mapped[Group | None] = relationship(back_populates="devices")
@@ -143,3 +158,14 @@ class Service(Base):
     risk_reason: Mapped[str | None] = mapped_column(String(128))
     first_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class Link(Base):
+    __tablename__ = "links"
+    __table_args__ = (UniqueConstraint("source_id", "target_id", name="uq_links_source_target"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("devices.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(8))
+    label: Mapped[str | None] = mapped_column(String(64))

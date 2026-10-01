@@ -1,0 +1,45 @@
+import type { Metadata } from "next";
+
+import { signIn } from "@/auth";
+
+export const metadata: Metadata = { title: "Sign in" };
+
+function safeTarget(url: string | undefined): string {
+  return url && url.startsWith("/") && !url.startsWith("//") ? url : "/";
+}
+
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ callbackUrl?: string; error?: string }> }) {
+  const { callbackUrl, error } = await searchParams;
+  const target = safeTarget(callbackUrl);
+
+  async function login() {
+    "use server";
+    await signIn("authentik", { redirectTo: target });
+  }
+
+  return (
+    <main className="flex min-h-dvh items-center justify-center px-4">
+      <div className="flex w-full max-w-sm flex-col gap-6 rounded-2xl border border-line bg-card p-8">
+        <div className="flex items-center gap-3">
+          <svg width="34" height="34" viewBox="0 0 32 32" fill="none" stroke="var(--accent)" strokeWidth="2.2" strokeLinecap="round" aria-hidden>
+            <path d="M13 4a12 12 0 0 0 0 24" />
+            <path d="M19 4a12 12 0 0 1 0 24" />
+            <path d="M16 9v14" />
+          </svg>
+          <h1 className="font-display text-3xl font-bold tracking-tight">Janus</h1>
+        </div>
+        <p className="text-sm text-muted">Home network control. Sign in with your Authentik account.</p>
+        {error && (
+          <p role="alert" className="rounded-lg border border-bad px-3 py-2 text-sm text-bad">
+            Sign-in was refused. Ask the owner to give your account access to Janus.
+          </p>
+        )}
+        <form action={login}>
+          <button type="submit" className="h-12 w-full rounded-lg border border-accent bg-accent text-sm font-semibold text-accent-ink">
+            Sign in with Authentik
+          </button>
+        </form>
+      </div>
+    </main>
+  );
+}

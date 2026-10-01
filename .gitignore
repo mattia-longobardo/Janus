@@ -8,3 +8,5 @@ __pycache__/
 .venv/
 node_modules/
 .next/
+frontend/next-env.d.ts
+*.tsbuildinfo
