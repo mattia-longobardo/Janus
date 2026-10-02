@@ -1,26 +1,32 @@
 # Janus
 
-Self-hosted control for a home LAN: device inventory, static IPs through Pi-hole v6 DHCP, new-device quarantine and approval, alerts via email and Gotify.
+Self-hosted control plane for a home LAN (192.168.1.0/24): device inventory, static IPs through Pi-hole v6 DHCP reservations, quarantine and approval of new devices, local device identification and port scanning, alerts via Gotify and e-mail.
 
-- Design spec: `docs/specs/2026-09-30-janus-design.md`
-- Roadmap: `docs/plans/2026-09-30-janus-roadmap.md`
+Janus never sits in the traffic path. It watches the LAN (ARP, DHCP, mDNS, NetBIOS, SSDP), keeps the inventory in PostgreSQL and tells Pi-hole which reservations to hold. The router (QHora-301W) stays the gateway; after the cutover Pi-hole is the only DHCP server.
 
-## Tests
+## Documentation
 
-    scripts/test.sh
+| Document | Contents |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | Containers, data flow, background jobs, data model, security model |
+| [docs/configuration.md](docs/configuration.md) | Every environment variable and the settings editable from the web app |
+| [docs/operations.md](docs/operations.md) | Deploy, sync modes, CLI, metrics, backups, tests |
+| [docs/runbooks/cutover.md](docs/runbooks/cutover.md) | Moving DHCP from the router to Pi-hole, and rolling back |
+| [docs/diagrams/architecture.html](docs/diagrams/architecture.html) | Interactive architecture diagram (open in a browser) |
+| [docs/diagrams/device-access.html](docs/diagrams/device-access.html) | Interactive device access lifecycle |
 
-Needs a reachable Postgres database `janus_test` (see `.env.example`).
+## Quick start
 
-## Deploy (homelab)
-
-    cp .env.example .env   # fill DB_JANUS_PASSWORD, JANUS_INTERNAL_TOKEN, JANUS_PIHOLE_PASSWORD
+    cp .env.example .env      # fill in the secrets, see docs/configuration.md
     docker compose up -d --build
 
-The worker starts in `JANUS_SYNC_MODE=dry-run`: it logs the reservation diff and never writes to Pi-hole.
-`janus-sentinel` runs on the host network to see ARP and DHCP traffic (see the AGENTS.md exception); it stays user 1000 through a `cap_net_raw` file capability.
+The stack joins the external networks `proxy_public`, `db_internal`, `mail_internal` and `metrics_internal`, and expects the shared PostgreSQL (database `janus`), Redis, Traefik, Authentik, Gotify and SMTP services of the homelab.
 
-`janus-scanner` runs unprivileged `nmap -sT -sV` one host at a time on groups with `scan_enabled` (or on request via `POST /api/devices/{id}/scan`). Identity comes only from local data: the offline IEEE OUI file, DHCP/mDNS/NetBIOS/SSDP announcements, and the local Pi-hole query log.
+Janus starts in `dry-run`: it computes the Pi-hole reservation diff and never writes to Pi-hole until the cutover switches it to `apply`.
 
-## Web app
+## Layout
 
-`frontend/` is a Next.js app served from the `janus` container on port 3000 behind Traefik (`https://${JANUS_HOST}`), with Authentik sign-in (Auth.js). It forwards `/api/*` to the FastAPI backend on `127.0.0.1:8000`, adding the internal token only for signed-in users. Frontend tests: `cd frontend && npm test`.
+    backend/     FastAPI API, worker, sentinel, scanner, Alembic migrations, tests
+    frontend/    Next.js web app (Auth.js + Authentik), proxy to the API, tests
+    docs/        documentation, runbook and diagrams
+    Dockerfile   one image for all four containers (entrypoint.sh picks the role)

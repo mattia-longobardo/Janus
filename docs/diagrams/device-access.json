@@ -1,0 +1,224 @@
+{
+  "schema_version": 2,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Janus — device access lifecycle",
+    "output": ".archify/lifecycle-device-access-20261002-140500/device-access.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/mattia-longobardo/janus.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "101df2d7c406d80cfab6f00d89621bd1e37ea7c7"
+    }
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "Admission"
+    },
+    {
+      "id": "restricted",
+      "label": "Restricted access"
+    },
+    {
+      "id": "denied",
+      "label": "Denied"
+    },
+    {
+      "id": "terminal",
+      "label": "Removed"
+    }
+  ],
+  "states": [
+    {
+      "id": "seen",
+      "type": "start",
+      "label": "First seen",
+      "sublabel": "ARP / DHCP sighting",
+      "lane": "main",
+      "col": 0,
+      "step": "01",
+      "tag": "sentinel",
+      "sources": [
+        {
+          "path": "backend/app/sentinel/record.py",
+          "line": 40,
+          "end_line": 62
+        }
+      ]
+    },
+    {
+      "id": "pending",
+      "type": "waiting",
+      "label": "Pending",
+      "sublabel": "quarantine pool",
+      "lane": "main",
+      "col": 1,
+      "step": "02",
+      "tag": "no gateway",
+      "sources": [
+        {
+          "path": "backend/app/sentinel/record.py",
+          "line": 53,
+          "end_line": 58
+        }
+      ]
+    },
+    {
+      "id": "authorized",
+      "type": "success",
+      "label": "Authorized",
+      "sublabel": "reservation + internet",
+      "lane": "main",
+      "col": 2,
+      "step": "03",
+      "tag": "static IP",
+      "sources": [
+        {
+          "path": "backend/app/approval.py",
+          "line": 18,
+          "end_line": 55
+        },
+        {
+          "path": "backend/app/api/approval.py",
+          "line": 66,
+          "end_line": 79
+        }
+      ]
+    },
+    {
+      "id": "lan_only",
+      "type": "active",
+      "label": "LAN only",
+      "sublabel": "reservation, no WAN",
+      "lane": "restricted",
+      "col": 2,
+      "tag": "lan-only tag",
+      "sources": [
+        {
+          "path": "backend/app/pihole/reservations.py",
+          "line": 15,
+          "end_line": 27
+        },
+        {
+          "path": "backend/app/api/devices.py",
+          "line": 127,
+          "end_line": 151
+        }
+      ]
+    },
+    {
+      "id": "blocked",
+      "type": "failure",
+      "label": "Blocked",
+      "sublabel": "no reservation",
+      "lane": "denied",
+      "col": 1,
+      "tag": "lease revoked",
+      "sources": [
+        {
+          "path": "backend/app/approval.py",
+          "line": 58,
+          "end_line": 64
+        },
+        {
+          "path": "backend/app/api/approval.py",
+          "line": 82,
+          "end_line": 89
+        }
+      ]
+    },
+    {
+      "id": "deleted",
+      "type": "neutral",
+      "label": "Deleted",
+      "sublabel": "reservation removed",
+      "lane": "terminal",
+      "col": 3,
+      "tag": "terminal",
+      "sources": [
+        {
+          "path": "backend/app/api/devices.py",
+          "line": 155,
+          "end_line": 166
+        }
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "seen",
+      "to": "pending",
+      "label": "device.new"
+    },
+    {
+      "from": "pending",
+      "to": "authorized",
+      "label": "approve",
+      "variant": "security"
+    },
+    {
+      "from": "pending",
+      "to": "lan_only",
+      "label": "approve lan_only",
+      "variant": "security"
+    },
+    {
+      "from": "pending",
+      "to": "blocked",
+      "label": "block",
+      "variant": "security"
+    },
+    {
+      "from": "authorized",
+      "to": "lan_only",
+      "label": "edit access"
+    },
+    {
+      "from": "lan_only",
+      "to": "blocked",
+      "label": "block",
+      "variant": "security"
+    },
+    {
+      "from": "blocked",
+      "to": "authorized",
+      "label": "approve",
+      "variant": "dashed"
+    },
+    {
+      "from": "authorized",
+      "to": "deleted",
+      "label": "delete",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Discovery",
+      "items": [
+        "The sentinel records every new MAC as Pending (device.new)",
+        "The gateway MAC is recorded as Authorized automatically"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Enforcement",
+      "items": [
+        "Approve picks a free IP in the group range and a DNS-safe hostname",
+        "In apply mode the API writes the Pi-hole reservation at once and revokes the quarantine lease",
+        "In dry-run mode only the database changes"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Denial",
+      "items": [
+        "Block drops the reservation and revokes the current lease",
+        "A blocked device can be approved again later"
+      ]
+    }
+  ]
+}
