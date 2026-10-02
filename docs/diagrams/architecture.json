@@ -1,0 +1,457 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Janus — LAN control plane",
+    "output": ".archify/architecture-janus-overview-20261002-140000/janus-architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/mattia-longobardo/janus.git",
+      "provider": "github",
+      "link_mode": "local-only",
+      "revision": "101df2d7c406d80cfab6f00d89621bd1e37ea7c7"
+    }
+  },
+  "components": [
+    {
+      "id": "admin",
+      "type": "external",
+      "label": "Admin browser",
+      "sublabel": "allowlisted e-mail",
+      "pos": [
+        40,
+        240
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/lib/allowlist.ts",
+          "line": 1
+        }
+      ]
+    },
+    {
+      "id": "traefik",
+      "type": "cloud",
+      "label": "Traefik",
+      "sublabel": "Host(JANUS_HOST)",
+      "pos": [
+        260,
+        240
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "docker-compose.yml",
+          "line": 49,
+          "end_line": 56
+        }
+      ]
+    },
+    {
+      "id": "authentik",
+      "type": "security",
+      "label": "Authentik",
+      "sublabel": "OIDC provider",
+      "pos": [
+        480,
+        60
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/auth.ts",
+          "line": 6,
+          "end_line": 16
+        }
+      ]
+    },
+    {
+      "id": "web",
+      "type": "frontend",
+      "label": "Next.js web",
+      "sublabel": "Auth.js · :3000",
+      "pos": [
+        480,
+        240
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "frontend/app/api/[...path]/route.ts",
+          "line": 9,
+          "end_line": 16
+        },
+        {
+          "path": "frontend/lib/proxy.ts",
+          "line": 21,
+          "end_line": 45
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "FastAPI",
+      "sublabel": "127.0.0.1:8000",
+      "pos": [
+        745,
+        240
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "token-guarded",
+      "sources": [
+        {
+          "path": "backend/app/main.py",
+          "line": 29,
+          "end_line": 38
+        },
+        {
+          "path": "backend/app/security.py",
+          "line": 8,
+          "end_line": 13
+        },
+        {
+          "path": "entrypoint.sh",
+          "line": 4,
+          "end_line": 10
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "shared db stack",
+      "pos": [
+        1000,
+        236
+      ],
+      "size": [
+        150,
+        72
+      ],
+      "sources": [
+        {
+          "path": "backend/app/db.py",
+          "line": 1,
+          "end_line": 19
+        },
+        {
+          "path": "docker-compose.yml",
+          "line": 16
+        }
+      ]
+    },
+    {
+      "id": "pihole",
+      "type": "external",
+      "label": "Pi-hole v6",
+      "sublabel": "DHCP hosts · DNS log",
+      "pos": [
+        745,
+        440
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/app/pihole/client.py",
+          "line": 112,
+          "end_line": 131
+        },
+        {
+          "path": "backend/app/api/approval.py",
+          "line": 44,
+          "end_line": 57
+        }
+      ]
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "janus-worker",
+      "sublabel": "5 periodic jobs",
+      "pos": [
+        1000,
+        440
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/app/worker.py",
+          "line": 149,
+          "end_line": 175
+        }
+      ]
+    },
+    {
+      "id": "redis",
+      "type": "database",
+      "label": "Redis db 3",
+      "sublabel": "alert debounce",
+      "pos": [
+        1240,
+        440
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/app/worker.py",
+          "line": 153
+        },
+        {
+          "path": "docker-compose.yml",
+          "line": 78
+        }
+      ]
+    },
+    {
+      "id": "notify",
+      "type": "external",
+      "label": "Gotify · SMTP",
+      "sublabel": "alerts",
+      "pos": [
+        1000,
+        620
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/app/notify/channels.py",
+          "line": 18,
+          "end_line": 73
+        }
+      ]
+    },
+    {
+      "id": "sentinel",
+      "type": "backend",
+      "label": "janus-sentinel",
+      "sublabel": "host network",
+      "pos": [
+        1240,
+        100
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "tag": "cap_net_raw",
+      "sources": [
+        {
+          "path": "backend/app/sentinel/main.py",
+          "line": 92,
+          "end_line": 140
+        },
+        {
+          "path": "docker-compose.yml",
+          "line": 111,
+          "end_line": 121
+        }
+      ]
+    },
+    {
+      "id": "scanner",
+      "type": "backend",
+      "label": "janus-scanner",
+      "sublabel": "nmap one host",
+      "pos": [
+        1240,
+        280
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/app/intel/scanner.py",
+          "line": 26
+        },
+        {
+          "path": "backend/app/intel/scanner.py",
+          "line": 60,
+          "end_line": 98
+        }
+      ]
+    },
+    {
+      "id": "lan",
+      "type": "external",
+      "label": "LAN devices",
+      "sublabel": "192.168.1.0/24",
+      "pos": [
+        1500,
+        190
+      ],
+      "size": [
+        150,
+        64
+      ],
+      "sources": [
+        {
+          "path": "backend/app/sentinel/main.py",
+          "line": 84,
+          "end_line": 89
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "container janus",
+      "wraps": [
+        "web",
+        "api"
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "admin-https",
+      "from": "admin",
+      "to": "traefik",
+      "label": "HTTPS",
+      "variant": "emphasis"
+    },
+    {
+      "id": "traefik-web",
+      "from": "traefik",
+      "to": "web",
+      "label": ":3000",
+      "variant": "emphasis"
+    },
+    {
+      "id": "web-oidc",
+      "from": "web",
+      "to": "authentik",
+      "label": "OIDC sign-in",
+      "variant": "security"
+    },
+    {
+      "id": "web-api",
+      "from": "web",
+      "to": "api",
+      "label": "/api/* + token",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-sql",
+      "from": "api",
+      "to": "postgres",
+      "label": "SQL"
+    },
+    {
+      "id": "api-pihole",
+      "from": "api",
+      "to": "pihole",
+      "label": "approve · DNS log"
+    },
+    {
+      "id": "worker-sql",
+      "from": "worker",
+      "to": "postgres",
+      "label": "SQL"
+    },
+    {
+      "id": "worker-pihole",
+      "from": "worker",
+      "to": "pihole",
+      "label": "reconcile"
+    },
+    {
+      "id": "worker-redis",
+      "from": "worker",
+      "to": "redis",
+      "label": "debounce"
+    },
+    {
+      "id": "worker-notify",
+      "from": "worker",
+      "to": "notify",
+      "label": "dispatch",
+      "variant": "dashed"
+    },
+    {
+      "id": "lan-sentinel",
+      "from": "lan",
+      "to": "sentinel",
+      "label": "ARP·DHCP·mDNS"
+    },
+    {
+      "id": "sentinel-sql",
+      "from": "sentinel",
+      "to": "postgres",
+      "label": "sightings"
+    },
+    {
+      "id": "scanner-lan",
+      "from": "scanner",
+      "to": "lan",
+      "label": "nmap -sT"
+    },
+    {
+      "id": "scanner-sql",
+      "from": "scanner",
+      "to": "postgres",
+      "label": "services"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Request path",
+      "items": [
+        "Traefik routes to Next.js on :3000",
+        "Auth.js signs in through Authentik; only allowlisted e-mails",
+        "Only signed-in, same-origin requests reach FastAPI with the internal token"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Background",
+      "items": [
+        "Worker every 5 min: Pi-hole reconcile; every minute: presence, DNS check, identity; every 15 s: alert dispatch",
+        "Sentinel sniffs ARP/DHCP/mDNS/NetBIOS/SSDP and sweeps ARP",
+        "Scanner runs nmap -sT -sV on scan-enabled groups"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Pi-hole",
+      "items": [
+        "dry-run logs the reservation diff; apply writes it",
+        "Approved devices get static reservations",
+        "Unknown devices stay in the .240–.254 quarantine pool"
+      ]
+    }
+  ]
+}
