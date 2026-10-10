@@ -46,7 +46,7 @@ services:
       - JANUS_ADMIN_PASSWORD=${JANUS_ADMIN_PASSWORD:-}
       - TZ=Europe/Rome
     volumes:
-      - ./janus/backups:/app/backups
+      - ${JANUS_BACKUP_DIR:-./janus/backups}:/app/backups
     restart: unless-stopped
     mem_limit: 1g
     cpus: "1.0"
