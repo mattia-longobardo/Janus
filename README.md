@@ -8,6 +8,9 @@ Janus never sits in the traffic path. It watches the LAN (ARP, DHCP, mDNS, NetBI
 
 | Document | Contents |
 |---|---|
+| [AGENTS.md](AGENTS.md) | Guide for AI agents and contributors: repository map, test and lint commands, conventions, migrations, "do not break" checklist, how to add a feature, provider, notification or setting |
+| [docs/features.md](docs/features.md) | Catalogue of every feature: behaviour and rules, configuration, entry points, data, tests, invariants, open questions; module → feature traceability |
+| [docs/design.md](docs/design.md) | Principles, end-to-end flows, data model and settings keys, security model, extension points, design decisions and rejected alternatives |
 | [docs/architecture.md](docs/architecture.md) | Containers, data flow, network providers, guests, background jobs, data model, security model |
 | [docs/configuration.md](docs/configuration.md) | Required and optional environment variables, and the settings editable from the web app |
 | [docs/operations.md](docs/operations.md) | Deploy, sync modes, CLI, metrics, backups, upgrade notes, tests |
@@ -32,4 +35,5 @@ Janus starts in `dry-run`: it computes the reservation diff and never writes to 
     backend/     FastAPI API, worker, sentinel, scanner, Alembic migrations, tests
     frontend/    Next.js web app (better-auth, optional OIDC), proxy to the API, tests
     docs/        documentation, runbook and diagrams
+    AGENTS.md    guide for AI agents and contributors (CLAUDE.md points to it)
     Dockerfile   one image for all four containers (entrypoint.sh picks the role)
