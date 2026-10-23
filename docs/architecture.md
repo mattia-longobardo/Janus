@@ -1,5 +1,8 @@
 # Architecture
 
+The operational view: what runs where. Principles, flows, the data model with its relations and the design
+decisions are in [design.md](design.md); every feature's rules and tests in [features.md](features.md).
+
 Interactive diagrams (open in a browser, with dark/light theme, search and export):
 
 - [diagrams/architecture.html](diagrams/architecture.html) — containers and their connections
