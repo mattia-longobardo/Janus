@@ -50,7 +50,7 @@ All commands from the repository root unless stated. Never print or commit the v
 |---|---|---|
 | Backend tests | `scripts/test.sh` | Python 3.12 via `uv`, `requirements-dev.txt`. Needs a PostgreSQL reachable at `localhost:5432` with a `janus_test` database for the `janus` role; the script reads `DB_JANUS_PASSWORD` from `.env`, or set `JANUS_TEST_DATABASE_URL`. The suite drops and recreates the `public` schema of that test database. Pass pytest args: `scripts/test.sh tests/test_enforcement.py -q`, `scripts/test.sh tests/providers` |
 | Backend lint | `cd backend && uv run --no-project --python 3.12 --with-requirements requirements-dev.txt ruff check .` | ruff rules `E,F,I,B,UP`, line length 130 (`backend/pyproject.toml`); `--fix` sorts imports |
-| Frontend install | `cd frontend && npm ci` | Node 22 |
+| Frontend install | `cd frontend && npm ci` | Node 26 |
 | Frontend tests | `cd frontend && npm test` | vitest + Testing Library, jsdom |
 | Frontend type check | `cd frontend && npx tsc --noEmit` | there is no ESLint config: the type check is the lint |
 | Frontend build | `cd frontend && npm run build` | Next.js standalone output |
