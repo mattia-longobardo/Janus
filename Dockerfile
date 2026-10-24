@@ -1,4 +1,4 @@
-FROM node:22-slim AS web
+FROM node:26-slim AS web
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -9,7 +9,7 @@ RUN npm run build
 FROM python:3.12-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl libpcap0.8 libcap2-bin nmap ieee-data libstdc++6 \
+    && apt-get install -y --no-install-recommends curl libpcap0.8 libcap2-bin nmap ieee-data libatomic1 libstdc++6 \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=web /usr/local/bin/node /usr/local/bin/node
 
