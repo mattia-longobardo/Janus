@@ -190,5 +190,4 @@ feature section to `docs/features.md` like F9/F10.
 
 ## Git
 
-- Work on a branch (`feat/...`, `fix/...`, `docs/...`, `chore/...`), Conventional Commits, small commits; open a PR
-  to `main` on `mattia-longobardo/Janus`. Never commit `.env`, `janus/` (runtime data and backups) or real MACs.
+- Commits, branches, PRs and deploys follow the `git-policy` skill. Never commit `.env`, `janus/` (runtime data and backups) or real MACs.
