@@ -1,4 +1,6 @@
 .env
+.env.local
+.env.pre-infisical
 *.csv
 !backend/tests/fixtures/*.csv
 __pycache__/
