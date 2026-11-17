@@ -4,6 +4,10 @@ Guide for AI agents (and humans) changing this repository. Janus is a self-hoste
 device inventory, DHCP reservations through network providers (Pi-hole v6, UniFi), quarantine and approval, guests,
 local identification and port scans, notifications, better-auth sign-in. It never sits in the traffic path.
 
+## Coding hygiene
+
+Follow skill `coding-hygiene` and the "Coding hygiene" section of `/home/mattia/docker/AGENTS.md` (HARD rules, defaults, end-of-task checklist).
+
 ## Read first
 
 1. [docs/features.md](docs/features.md): every feature with its rules, entry points, tests and invariants. **Read
