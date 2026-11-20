@@ -22,7 +22,9 @@ Janus never sits in the traffic path. It watches the LAN (ARP, DHCP, mDNS, NetBI
 ## Quick start
 
     cp .env.example .env      # fill in the four required variables, see docs/configuration.md
-    docker compose up -d --build
+    make deploy               # docker compose up -d --build --wait, with the deploy lock
+
+`make help` lists the targets: `lint`, `test`, `ci` (what GitHub Actions runs) and `deploy`.
 
 Open `https://<JANUS_HOST>`: with no user yet you are sent to `/setup` to create the first admin (or set `JANUS_ADMIN_USERNAME`/`JANUS_ADMIN_PASSWORD`). Everything else is optional and configured in **Settings** or through the optional variables of `.env.example`: Gotify and e-mail notifications, Authentik/OIDC sign-in, the Pi-hole or UniFi provider, the guest pool.
 
