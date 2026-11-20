@@ -35,5 +35,5 @@ Janus starts in `dry-run`: it computes the reservation diff and never writes to 
     backend/     FastAPI API, worker, sentinel, scanner, Alembic migrations, tests
     frontend/    Next.js web app (better-auth, optional OIDC), proxy to the API, tests
     docs/        documentation, runbook and diagrams
-    AGENTS.md    guide for AI agents and contributors (CLAUDE.md points to it)
+    AGENTS.md    guide for AI agents and contributors
     Dockerfile   one image for all four containers (entrypoint.sh picks the role)
