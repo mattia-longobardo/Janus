@@ -70,6 +70,19 @@ Local development without Docker is possible but not scripted: FastAPI with `uvi
 `BACKEND_URL`, the same `JANUS_INTERNAL_TOKEN`, `AUTH_SECRET`, `AUTH_URL` and `JANUS_DATABASE_URL`/`AUTH_DATABASE_URL`
 (run `node scripts/migrate-auth.mjs` once). The sentinel needs raw sockets on the host network; prefer the tests.
 
+## Deploy
+
+Follow `git-policy` §7 from a clean checkout of `main`.
+
+1. Rollback point: `docker tag janus:latest janus:rollback-<running SHA>`.
+2. `make deploy` (lock `/var/lock/deploy-janus.lock`, waits for the four health checks).
+3. Health check: `docker compose ps` all `healthy`; in `janus`, `curl -fsS 127.0.0.1:8000/api/health`,
+   `curl -fsS 127.0.0.1:3000/api/healthz`, `/login` answers 200 on `127.0.0.1:3000` and through Traefik; a
+   DB-backed call (`/api/devices` with the `X-Janus-Internal-Token` header) answers 200.
+4. Tag `vX.Y.Z` on the deployed SHA (`git-policy` §9).
+5. Rollback: `docker tag janus:rollback-<SHA> janus:latest && docker compose up -d --no-build --wait`.
+   Migrations run forward only at start: a release with a new Alembic revision needs a database restore plan.
+
 ## Conventions
 
 ### Backend (Python 3.12, FastAPI, SQLAlchemy 2, pydantic v2)
