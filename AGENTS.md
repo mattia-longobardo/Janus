@@ -52,6 +52,7 @@ All commands from the repository root unless stated. Never print or commit the v
 
 | What | Command | Notes |
 |---|---|---|
+| Make targets | `make lint`, `make test`, `make ci`, `make deploy` (`make help`) | `make ci` is the only step of `.github/workflows/ci.yml`: install, lint, then the tests against a throwaway `pgvector/pgvector:pg18` on `localhost:5432` |
 | Backend tests | `scripts/test.sh` | Python 3.12 via `uv`, `requirements-dev.txt`. Needs a PostgreSQL reachable at `localhost:5432` with a `janus_test` database for the `janus` role; the script reads `DB_JANUS_PASSWORD` from `.env`, or set `JANUS_TEST_DATABASE_URL`. The suite drops and recreates the `public` schema of that test database. Pass pytest args: `scripts/test.sh tests/test_enforcement.py -q`, `scripts/test.sh tests/providers` |
 | Backend lint | `cd backend && uv run --no-project --python 3.12 --with-requirements requirements-dev.txt ruff check .` | ruff rules `E,F,I,B,UP`, line length 130 (`backend/pyproject.toml`); `--fix` sorts imports |
 | Frontend install | `cd frontend && npm ci` | Node 26 |
@@ -59,7 +60,7 @@ All commands from the repository root unless stated. Never print or commit the v
 | Frontend type check | `cd frontend && npx tsc --noEmit` | there is no ESLint config: the type check is the lint |
 | Frontend build | `cd frontend && npm run build` | Next.js standalone output |
 | Compose check | `docker compose config -q` | only when `docker-compose.yml` changes |
-| Image + deploy | `docker compose up -d --build` | migrations run at start in the `janus` container; see [docs/operations.md](docs/operations.md) |
+| Image + deploy | `make deploy` = `flock -n /var/lock/deploy-janus.lock docker compose up -d --build --wait` | migrations run at start in the `janus` container; see [docs/operations.md](docs/operations.md) |
 
 Before handing over, run backend tests, ruff, frontend tests and the type check; run the build when frontend code
 changed. Report the real results.
