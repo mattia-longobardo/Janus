@@ -38,7 +38,7 @@ docker exec -it janus python -m app.cli backup
 docker exec -it janus python -m app.cli preflight
 ```
 
-`preflight` exits non-zero and lists what is wrong until every blocking check is green. The backup (Pi-hole Teleporter zip + Janus data dump) lands in `projects/Janus/janus/backups/<timestamp>/`.
+`preflight` exits non-zero and lists what is wrong until every blocking check is green. The backup (Pi-hole Teleporter zip + Janus data dump) lands in `projects/janus/janus/backups/<timestamp>/`.
 
 ## 3. Cutover
 
