@@ -79,7 +79,7 @@ A `pg_dump` of the whole `janus` database is enough, but it must include **both*
 
 ## Notifications
 
-Events are written to the `events` table and dispatched every 15 s, through the channels configured in Settings > Integrations (Gotify and/or e-mail; with none ready the notification pages are hidden). Defaults (editable per event in **Notifications**):
+Events are written to the `events` table and dispatched every 15 s, through the channels configured in Settings > Integrations (Gotify and/or e-mail; with none ready the notification pages are hidden). Gotify is on by default only for problems. Defaults (editable per event in **Notifications**):
 
 | Event | Default |
 |---|---|
@@ -87,8 +87,8 @@ Events are written to the `events` table and dispatched every 15 s, through the 
 | `ip.conflict`, `security.risky_service` | Gotify priority 8 + e-mail |
 | `infra.down` | Gotify priority 8 + e-mail, muted during maintenance |
 | `security.new_port` | Gotify priority 6 |
-| `device.approved`, `device.blocked` | Gotify priority 4 |
-| `infra.up` | Gotify priority 4 + e-mail, muted during maintenance |
+| `device.approved`, `device.blocked` | off (not a problem; enable in Notifications rules) |
+| `infra.up` | e-mail only, muted during maintenance (Gotify off: a recovery is not a problem) |
 | `device.offline` | Gotify priority 5, muted during maintenance |
 | `device.private_mac` | Gotify priority 5 |
 | `device.ip_mismatch` | e-mail only |

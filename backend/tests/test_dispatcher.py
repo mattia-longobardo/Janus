@@ -143,7 +143,8 @@ def test_up_follows_a_delivered_down(db, env):
     db.get(Setting, "pihole.down_since").value = None
     emit(db, "infra.up", None, {"service": "pihole", "down_since": at(1, 11, 0).isoformat()}, when=at(1, 11, 30))
     run()
-    assert senders["gotify"].sent == ["Pi-hole unreachable", "Pi-hole reachable again"]
+    assert senders["email"].sent == ["Pi-hole unreachable", "Pi-hole reachable again"]
+    assert senders["gotify"].sent == ["Pi-hole unreachable"]  # a recovery is not a problem: Gotify off by default
 
 
 def test_mute_is_judged_on_event_time(db, env):

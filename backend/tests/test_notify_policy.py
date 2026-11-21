@@ -36,6 +36,11 @@ def test_default_rules_route_events():
     assert _channels("unknown.type") == []
 
 
+@pytest.mark.parametrize("kind", ["device.approved", "device.blocked", "infra.up", "guest.added"])
+def test_gotify_defaults_off_for_events_that_are_not_problems(kind):
+    assert "gotify" not in _channels(kind)
+
+
 def test_quiet_hours_keep_only_new_devices():
     assert _channels("device.offline", now=NIGHT) == []
     assert _channels("device.new", now=NIGHT) == ["email", "gotify"]
